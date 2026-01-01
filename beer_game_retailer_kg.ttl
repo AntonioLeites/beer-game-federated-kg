@@ -1,0 +1,99 @@
+# ============================================================
+# BEER GAME - RETAILER KNOWLEDGE GRAPH
+# Federated endpoint: http://localhost:7200/repositories/BeerGame_Retailer
+# ============================================================
+
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix bg: <http://beergame.org/ontology#> .
+@prefix bg_retailer: <http://beergame.org/retailer#> .
+@prefix bg_wholesaler: <http://beergame.org/wholesaler#> .
+
+#### RETAILER ACTOR ####
+
+bg_retailer:Retailer_Alpha a bg:Retailer ;
+    rdfs:label "Retailer Alpha" ;
+    bg:agentModel "GPT-5"^^xsd:string ;
+    bg:agentPrompt """You are the Retailer in a beer distribution game. 
+Your goal: Minimize total costs (holding + backlog).
+Current week data and federated queries are provided.
+Make ordering decisions based on actual customer demand, not panic."""^^xsd:string ;
+    bg:shippingDelay "2"^^xsd:integer ;  # 2 weeks for beer to arrive from wholesaler
+    bg:orderDelay "1"^^xsd:integer ;     # 1 week for wholesaler to process order
+    bg:ordersFrom bg_wholesaler:Wholesaler_Beta ;
+    bg:budgetConstraint "10000.00"^^xsd:decimal ;
+    bg:totalCost "0.00"^^xsd:decimal .
+
+#### CURRENT INVENTORY STATE (Week 1) ####
+
+bg_retailer:Inventory_Week1 a bg:Inventory ;
+    bg:weekNumber "1"^^xsd:integer ;
+    bg:currentInventory "12"^^xsd:integer ;  # Starting inventory (standard in Beer Game)
+    bg:backlog "0"^^xsd:integer ;
+    bg:incomingShipment "0"^^xsd:integer ;  # No shipments arriving yet
+    bg:outgoingShipment "0"^^xsd:integer ;
+    bg:holdingCost "0.50"^^xsd:decimal ;  # $0.50 per unit per week
+    bg:backlogCost "1.00"^^xsd:decimal .  # $1.00 per unit per week
+
+#### CUSTOMER DEMAND (Week 1) ####
+
+bg_retailer:Demand_Week1 a bg:CustomerDemand ;
+    bg:weekNumber "1"^^xsd:integer ;
+    bg:actualDemand "4"^^xsd:integer ;  # End customers want 4 cases of beer
+    rdfs:comment "Initial steady demand from end customers" .
+
+#### RETAILER'S ORDER TO WHOLESALER (Week 1) ####
+
+bg_retailer:Order_Week1 a bg:Order ;
+    bg:weekNumber "1"^^xsd:integer ;
+    bg:placedBy bg_retailer:Retailer_Alpha ;
+    bg:receivedBy bg_wholesaler:Wholesaler_Beta ;
+    bg:orderQuantity "4"^^xsd:integer ;  # Retailer orders 4 to match demand
+    rdfs:comment "Initial order matches customer demand" .
+
+#### SHIPMENTS IN PIPELINE (Week 1) ####
+
+bg_retailer:Shipment_Week1_Arriving3 a bg:Shipment ;
+    bg:weekNumber "1"^^xsd:integer ;
+    bg:shippedFrom bg_wholesaler:Wholesaler_Beta ;
+    bg:shippedTo bg_retailer:Retailer_Alpha ;
+    bg:shippedQuantity "4"^^xsd:integer ;
+    bg:arrivalWeek "3"^^xsd:integer ;  # Will arrive in week 3 (2-week delay)
+    rdfs:comment "Previous order from wholesaler, arriving in 2 weeks" .
+
+#### AGENT DECISION METRICS ####
+
+bg_retailer:Metrics_Week1 a bg:Actor ;
+    bg:demandRate "4.0"^^xsd:decimal ;  # Current demand rate
+    bg:inventoryCoverage "3.0"^^xsd:decimal ;  # 12 units / 4 demand = 3 weeks coverage
+    bg:hasBullwhipRisk "false"^^xsd:boolean ;
+    bg:hasStockoutRisk "false"^^xsd:boolean .
+
+#### RETAILER-SPECIFIC INTERNAL DATA ####
+
+# Private data (NOT shared via federation)
+bg_retailer:InternalData_Week1 a bg:InternalMetrics ;
+    bg:retailMargin "0.25"^^xsd:decimal ;  # 25% markup
+    bg:customerSatisfactionScore "95"^^xsd:integer ;
+    bg:internalNotes "Week 1: Normal operations, conservative ordering"^^xsd:string .
+
+#### FEDERATED QUERY EXAMPLES (for AI agent) ####
+
+# The Retailer agent will execute these queries to get upstream data:
+
+# Query 1: Get wholesaler's lead time
+# SELECT ?leadTime WHERE {
+#   SERVICE <http://localhost:7200/repositories/BeerGame_Wholesaler> {
+#     bg_wholesaler:Wholesaler_Beta bg:shippingDelay ?leadTime .
+#   }
+# }
+
+# Query 2: Check if shipment is delayed
+# SELECT ?status WHERE {
+#   SERVICE <http://localhost:7200/repositories/BeerGame_Wholesaler> {
+#     ?shipment bg:shippedTo bg_retailer:Retailer_Alpha ;
+#               bg:arrivalWeek ?week ;
+#               bg:trackingStatus ?status .
+#   }
+# }

@@ -1,0 +1,291 @@
+# ============================================================
+# BEER GAME - SHACL VALIDATION RULES
+# Validates data integrity across federated KGs
+# ============================================================
+
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix sh: <http://www.w3.org/ns/shacl#> .
+@prefix bg: <http://beergame.org/ontology#> .
+
+#### ORDER VALIDATION ####
+
+bg:OrderShape a sh:NodeShape ;
+    sh:targetClass bg:Order ;
+    sh:property [
+        sh:path bg:orderQuantity ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;  # Cannot order negative quantities
+        sh:maxCount 1 ;
+        sh:message "Order quantity must be a non-negative integer" ;
+    ] ;
+    sh:property [
+        sh:path bg:weekNumber ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxCount 1 ;
+        sh:message "Week number must be a positive integer" ;
+    ] ;
+    sh:property [
+        sh:path bg:placedBy ;
+        sh:nodeKind sh:IRI ;
+        sh:class bg:Actor ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Order must have exactly one actor placing it" ;
+    ] ;
+    sh:property [
+        sh:path bg:receivedBy ;
+        sh:nodeKind sh:IRI ;
+        sh:class bg:Actor ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Order must have exactly one recipient" ;
+    ] .
+
+#### INVENTORY VALIDATION ####
+
+bg:InventoryShape a sh:NodeShape ;
+    sh:targetClass bg:Inventory ;
+    sh:property [
+        sh:path bg:currentInventory ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxCount 1 ;
+        sh:message "Current inventory must be non-negative" ;
+    ] ;
+    sh:property [
+        sh:path bg:backlog ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxCount 1 ;
+        sh:message "Backlog must be non-negative" ;
+    ] ;
+    sh:property [
+        sh:path bg:holdingCost ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0.0 ;
+        sh:maxCount 1 ;
+        sh:message "Holding cost must be non-negative" ;
+    ] ;
+    sh:property [
+        sh:path bg:backlogCost ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0.0 ;
+        sh:maxCount 1 ;
+        sh:message "Backlog cost must be non-negative" ;
+    ] .
+
+#### SHIPMENT VALIDATION ####
+
+bg:ShipmentShape a sh:NodeShape ;
+    sh:targetClass bg:Shipment ;
+    sh:property [
+        sh:path bg:shippedQuantity ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path bg:arrivalWeek ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path bg:shippedFrom ;
+        sh:class bg:Actor ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    sh:property [
+        sh:path bg:shippedTo ;
+        sh:class bg:Actor ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+    ] ;
+    # Validate that arrival week > shipment week
+    sh:sparql [
+        sh:message "Arrival week must be greater than shipment week" ;
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT $this ?shipWeek ?arrivalWeek
+            WHERE {
+                $this bg:weekNumber ?shipWeek ;
+                      bg:arrivalWeek ?arrivalWeek .
+                FILTER (?arrivalWeek <= ?shipWeek)
+            }
+        """ ;
+    ] .
+
+#### BUDGET CONSTRAINT VALIDATION ####
+
+bg:BudgetConstraintShape a sh:NodeShape ;
+    sh:targetClass bg:Order ;
+    sh:sparql [
+        sh:message "Order exceeds budget constraint" ;
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT $this ?orderQty ?budget
+            WHERE {
+                $this bg:orderQuantity ?orderQty ;
+                      bg:placedBy ?actor .
+                ?actor bg:budgetConstraint ?budget .
+                # Assume $1 per unit cost for simplicity
+                FILTER (?orderQty > ?budget)
+            }
+        """ ;
+    ] .
+
+#### GUARDRAIL VALIDATION (Max Order Quantity) ####
+
+bg:MaxOrderShape a sh:NodeShape ;
+    sh:targetClass bg:Order ;
+    sh:sparql [
+        sh:message "Order quantity exceeds dynamic guardrail (max order)" ;
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT $this ?orderQty ?maxOrder
+            WHERE {
+                $this bg:orderQuantity ?orderQty ;
+                      bg:placedBy ?actor .
+                ?actor bg:maxOrderQuantity ?maxOrder .
+                FILTER (?orderQty > ?maxOrder)
+            }
+        """ ;
+    ] .
+
+#### CROSS-KG VALIDATION: Order-Shipment Consistency ####
+
+bg:OrderShipmentConsistencyShape a sh:NodeShape ;
+    sh:targetClass bg:Order ;
+    sh:sparql [
+        sh:message "Order has no corresponding shipment after processing delay" ;
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT $this ?orderWeek ?processingWeek
+            WHERE {
+                $this bg:weekNumber ?orderWeek ;
+                      bg:receivedBy ?recipient .
+                ?recipient bg:orderDelay ?delay .
+                BIND(?orderWeek + ?delay AS ?processingWeek)
+                
+                # Check that a shipment exists for this order
+                FILTER NOT EXISTS {
+                    ?shipment a bg:Shipment ;
+                              bg:shippedFrom ?recipient ;
+                              bg:weekNumber ?processingWeek .
+                }
+            }
+        """ ;
+    ] .
+
+#### FEDERATED VALIDATION: Demand Propagation ####
+
+bg:DemandPropagationShape a sh:NodeShape ;
+    sh:targetClass bg:Retailer ;
+    sh:sparql [
+        sh:message "Wholesaler's demand rate should match retailer's actual demand" ;
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            PREFIX bg_retailer: <http://beergame.org/retailer#>
+            PREFIX bg_wholesaler: <http://beergame.org/wholesaler#>
+            SELECT ?realDemand ?wholesalerDemand
+            WHERE {
+                # Query Retailer KG for actual demand
+                ?demand a bg:CustomerDemand ;
+                        bg:actualDemand ?realDemand .
+                
+                # Query Wholesaler KG for their demand rate
+                SERVICE <http://localhost:7200/repositories/BeerGame_Wholesaler> {
+                    bg_wholesaler:Wholesaler_Beta bg:demandRate ?wholesalerDemand .
+                }
+                
+                # Validate they match (allowing 10% tolerance)
+                FILTER (ABS(?wholesalerDemand - ?realDemand) / ?realDemand > 0.1)
+            }
+        """ ;
+    ] .
+
+#### BULLWHIP EFFECT DETECTION (Validation) ####
+
+bg:BullwhipDetectionShape a sh:NodeShape ;
+    sh:targetClass bg:Order ;
+    sh:sparql [
+        sh:message "ALERT: Order amplification detected (bullwhip effect)" ;
+        sh:severity sh:Warning ;  # Warning, not error
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            PREFIX bg_retailer: <http://beergame.org/retailer#>
+            SELECT $this ?orderQty ?realDemand (?orderQty / ?realDemand as ?amplification)
+            WHERE {
+                $this bg:orderQuantity ?orderQty ;
+                      bg:weekNumber ?week .
+                
+                # Federated query to get actual demand
+                SERVICE <http://localhost:7200/repositories/BeerGame_Retailer> {
+                    ?demand a bg:CustomerDemand ;
+                            bg:weekNumber ?week ;
+                            bg:actualDemand ?realDemand .
+                }
+                
+                # Flag if amplification > 1.3 (30% inflation)
+                FILTER (?orderQty / ?realDemand > 1.3)
+            }
+        """ ;
+    ] .
+
+#### STOCKOUT RISK DETECTION (Validation) ####
+
+bg:StockoutRiskShape a sh:NodeShape ;
+    sh:targetClass bg:Inventory ;
+    sh:sparql [
+        sh:message "WARNING: Stockout risk detected - inventory coverage below lead time" ;
+        sh:severity sh:Warning ;
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT $this ?coverage ?leadTime
+            WHERE {
+                $this bg:currentInventory ?stock .
+                
+                # Get actor's lead time and demand rate
+                ?actor a bg:Actor ;
+                       bg:shippingDelay ?leadTime ;
+                       bg:demandRate ?rate .
+                
+                # Calculate coverage
+                BIND(?stock / ?rate AS ?coverage)
+                
+                # Flag if coverage < lead time
+                FILTER (?coverage < ?leadTime)
+            }
+        """ ;
+    ] .
+
+#### COST CALCULATION VALIDATION ####
+
+bg:CostCalculationShape a sh:NodeShape ;
+    sh:targetClass bg:Actor ;
+    sh:sparql [
+        sh:message "Total cost calculation mismatch" ;
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT $this ?reportedCost ?calculatedCost
+            WHERE {
+                $this bg:totalCost ?reportedCost .
+                
+                # Calculate expected cost from inventory
+                ?inv a bg:Inventory ;
+                     bg:currentInventory ?stock ;
+                     bg:backlog ?backlog ;
+                     bg:holdingCost ?hCost ;
+                     bg:backlogCost ?bCost .
+                
+                BIND((?stock * ?hCost) + (?backlog * ?bCost) AS ?calculatedCost)
+                
+                # Flag if mismatch > 1% tolerance
+                FILTER (ABS(?reportedCost - ?calculatedCost) / ?calculatedCost > 0.01)
+            }
+        """ ;
+    ] .

@@ -1,0 +1,417 @@
+# ============================================================
+# BEER DISTRIBUTION GAME - SHARED ONTOLOGY
+# Based on HBR "When Supply Chains Become Autonomous" (Dec 2024)
+# Adapted from Sulzer Supply Chain Ontology
+# ============================================================
+
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix swrl: <http://www.w3.org/2003/11/swrl#> .
+@prefix swrlb: <http://www.w3.org/2003/11/swrlb#> .
+
+# Common beer game ontology
+@prefix bg: <http://beergame.org/ontology#> .
+@prefix bg_retailer: <http://beergame.org/retailer#> .
+@prefix bg_wholesaler: <http://beergame.org/wholesaler#> .
+@prefix bg_distributor: <http://beergame.org/distributor#> .
+@prefix bg_factory: <http://beergame.org/factory#> .
+
+#### CORE CLASSES ####
+
+# Supply Chain Actors
+bg:Actor a owl:Class ;
+    rdfs:label "Supply Chain Actor" ;
+    rdfs:comment "A participant in the beer distribution game" .
+
+bg:Retailer a owl:Class ;
+    rdfs:subClassOf bg:Actor ;
+    rdfs:label "Retailer" ;
+    rdfs:comment "Sells beer to end customers" .
+
+bg:Wholesaler a owl:Class ;
+    rdfs:subClassOf bg:Actor ;
+    rdfs:label "Wholesaler" ;
+    rdfs:comment "Distributes beer to retailers" .
+
+bg:Distributor a owl:Class ;
+    rdfs:subClassOf bg:Actor ;
+    rdfs:label "Distributor" ;
+    rdfs:comment "Distributes beer from factory to wholesalers" .
+
+bg:Factory a owl:Class ;
+    rdfs:subClassOf bg:Actor ;
+    rdfs:label "Factory" ;
+    rdfs:comment "Produces beer" .
+
+# Documents
+bg:Order a owl:Class ;
+    rdfs:label "Order" ;
+    rdfs:comment "A purchase order between actors" .
+
+bg:Shipment a owl:Class ;
+    rdfs:label "Shipment" ;
+    rdfs:comment "Beer units in transit" .
+
+# Game State
+bg:Week a owl:Class ;
+    rdfs:label "Week" ;
+    rdfs:comment "A time period in the simulation (1 week)" .
+
+bg:Inventory a owl:Class ;
+    rdfs:label "Inventory" ;
+    rdfs:comment "Beer inventory at an actor's position" .
+
+bg:CustomerDemand a owl:Class ;
+    rdfs:label "Customer Demand" ;
+    rdfs:comment "End customer demand for beer" .
+
+#### CORE PROPERTIES ####
+
+# Actor relationships
+bg:suppliesTo a owl:ObjectProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range bg:Actor ;
+    rdfs:label "supplies to" ;
+    rdfs:comment "Indicates supply relationship direction" .
+
+bg:ordersFrom a owl:ObjectProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range bg:Actor ;
+    rdfs:label "orders from" ;
+    rdfs:comment "Indicates ordering relationship direction" .
+
+# Order properties
+bg:orderQuantity a owl:DatatypeProperty ;
+    rdfs:domain bg:Order ;
+    rdfs:range xsd:integer ;
+    rdfs:label "order quantity" .
+
+bg:weekNumber a owl:DatatypeProperty ;
+    rdfs:domain [ a owl:Class ;
+        owl:unionOf (bg:Order bg:Shipment bg:Week bg:CustomerDemand) ] ;
+    rdfs:range xsd:integer ;
+    rdfs:label "week number" .
+
+bg:placedBy a owl:ObjectProperty ;
+    rdfs:domain bg:Order ;
+    rdfs:range bg:Actor ;
+    rdfs:label "placed by" .
+
+bg:receivedBy a owl:ObjectProperty ;
+    rdfs:domain bg:Order ;
+    rdfs:range bg:Actor ;
+    rdfs:label "received by" .
+
+# Inventory properties
+bg:currentInventory a owl:DatatypeProperty ;
+    rdfs:domain bg:Inventory ;
+    rdfs:range xsd:integer ;
+    rdfs:label "current inventory" ;
+    rdfs:comment "Units currently in stock" .
+
+bg:backlog a owl:DatatypeProperty ;
+    rdfs:domain bg:Inventory ;
+    rdfs:range xsd:integer ;
+    rdfs:label "backlog" ;
+    rdfs:comment "Unfulfilled orders (stockouts)" .
+
+bg:incomingShipment a owl:DatatypeProperty ;
+    rdfs:domain bg:Inventory ;
+    rdfs:range xsd:integer ;
+    rdfs:label "incoming shipment" ;
+    rdfs:comment "Units arriving this week from upstream" .
+
+bg:outgoingShipment a owl:DatatypeProperty ;
+    rdfs:domain bg:Inventory ;
+    rdfs:range xsd:integer ;
+    rdfs:label "outgoing shipment" ;
+    rdfs:comment "Units shipped to downstream this week" .
+
+# Shipment properties
+bg:shippedQuantity a owl:DatatypeProperty ;
+    rdfs:domain bg:Shipment ;
+    rdfs:range xsd:integer ;
+    rdfs:label "shipped quantity" .
+
+bg:arrivalWeek a owl:DatatypeProperty ;
+    rdfs:domain bg:Shipment ;
+    rdfs:range xsd:integer ;
+    rdfs:label "arrival week" ;
+    rdfs:comment "Week when shipment arrives (current week + shipping delay)" .
+
+bg:shippedFrom a owl:ObjectProperty ;
+    rdfs:domain bg:Shipment ;
+    rdfs:range bg:Actor ;
+    rdfs:label "shipped from" .
+
+bg:shippedTo a owl:ObjectProperty ;
+    rdfs:domain bg:Shipment ;
+    rdfs:range bg:Actor ;
+    rdfs:label "shipped to" .
+
+# Customer Demand
+bg:actualDemand a owl:DatatypeProperty ;
+    rdfs:domain bg:CustomerDemand ;
+    rdfs:range xsd:integer ;
+    rdfs:label "actual demand" ;
+    rdfs:comment "Real end-customer demand (only retailer sees directly)" .
+
+# Cost tracking
+bg:holdingCost a owl:DatatypeProperty ;
+    rdfs:domain bg:Inventory ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "holding cost" ;
+    rdfs:comment "Cost per unit in inventory per week" .
+
+bg:backlogCost a owl:DatatypeProperty ;
+    rdfs:domain bg:Inventory ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "backlog cost" ;
+    rdfs:comment "Penalty cost per unit backordered per week" .
+
+bg:totalCost a owl:DatatypeProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "total cost" ;
+    rdfs:comment "Cumulative cost (holding + backlog)" .
+
+# Delays (game parameters)
+bg:shippingDelay a owl:DatatypeProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range xsd:integer ;
+    rdfs:label "shipping delay" ;
+    rdfs:comment "Weeks for shipment to arrive at downstream partner" .
+
+bg:orderDelay a owl:DatatypeProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range xsd:integer ;
+    rdfs:label "order delay" ;
+    rdfs:comment "Weeks for order to be processed by upstream partner" .
+
+# Decision-making metrics (for AI agents)
+bg:demandRate a owl:DatatypeProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "demand rate" ;
+    rdfs:comment "Average demand per week (smoothed)" .
+
+bg:inventoryCoverage a owl:DatatypeProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "inventory coverage" ;
+    rdfs:comment "Weeks of inventory at current demand rate" .
+
+bg:orderAmplification a owl:DatatypeProperty ;
+    rdfs:domain bg:Order ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "order amplification" ;
+    rdfs:comment "Ratio of order quantity to actual demand (bullwhip indicator)" .
+
+# Risk flags
+bg:hasBullwhipRisk a owl:DatatypeProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "has bullwhip risk" ;
+    rdfs:comment "Flag indicating potential bullwhip effect" .
+
+bg:hasStockoutRisk a owl:DatatypeProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "has stockout risk" ;
+    rdfs:comment "Flag indicating potential stockout" .
+
+# Guardrails
+bg:maxOrderQuantity a owl:DatatypeProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range xsd:integer ;
+    rdfs:label "max order quantity" ;
+    rdfs:comment "Dynamic guardrail capping order size" .
+
+bg:budgetConstraint a owl:DatatypeProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range xsd:decimal ;
+    rdfs:label "budget constraint" ;
+    rdfs:comment "Maximum spending allowed per week" .
+
+# Agent metadata
+bg:agentModel a owl:DatatypeProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range xsd:string ;
+    rdfs:label "agent model" ;
+    rdfs:comment "GenAI model powering this actor (e.g., 'GPT-5', 'Llama-4')" .
+
+bg:agentPrompt a owl:DatatypeProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range xsd:string ;
+    rdfs:label "agent prompt" ;
+    rdfs:comment "System prompt for the AI agent" .
+
+#### GAME CONSTANTS ####
+
+# Default values (can be overridden per actor)
+bg:defaultHoldingCost a owl:DatatypeProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range xsd:decimal ;
+    owl:equivalentProperty [ rdf:value "0.50"^^xsd:decimal ] .
+
+bg:defaultBacklogCost a owl:DatatypeProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range xsd:decimal ;
+    owl:equivalentProperty [ rdf:value "1.00"^^xsd:decimal ] .
+
+bg:defaultShippingDelay a owl:DatatypeProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range xsd:integer ;
+    owl:equivalentProperty [ rdf:value "2"^^xsd:integer ] .
+
+bg:defaultOrderDelay a owl:DatatypeProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range xsd:integer ;
+    owl:equivalentProperty [ rdf:value "1"^^xsd:integer ] .
+
+#### SWRL RULES ####
+
+# Rule 1: Bullwhip Detection
+# IF current order / actual demand > 1.3 THEN flag bullwhip risk
+[BullwhipDetection:
+    (?order rdf:type bg:Order)
+    (?order bg:orderQuantity ?qty)
+    (?order bg:weekNumber ?week)
+    (?order bg:placedBy ?actor)
+    (?demand rdf:type bg:CustomerDemand)
+    (?demand bg:weekNumber ?week)
+    (?demand bg:actualDemand ?realDemand)
+    swrlb:greaterThan(?realDemand, 0)
+    swrlb:divide(?ratio, ?qty, ?realDemand)
+    swrlb:greaterThan(?ratio, 1.3)
+    ->
+    (?actor bg:hasBullwhipRisk "true"^^xsd:boolean)
+    (?order bg:orderAmplification ?ratio)
+]
+
+# Rule 2: Order Capping (Guardrail)
+# IF bullwhip risk detected THEN cap order at realDemand * 1.2
+[OrderCapping:
+    (?actor rdf:type bg:Actor)
+    (?actor bg:hasBullwhipRisk "true"^^xsd:boolean)
+    (?demand rdf:type bg:CustomerDemand)
+    (?demand bg:actualDemand ?realDemand)
+    swrlb:multiply(?maxOrder, ?realDemand, 1.2)
+    ->
+    (?actor bg:maxOrderQuantity ?maxOrder)
+]
+
+# Rule 3: Stockout Risk Detection
+# IF inventory coverage < lead time THEN flag stockout risk
+[StockoutRisk:
+    (?actor rdf:type bg:Actor)
+    (?actor bg:shippingDelay ?leadTime)
+    (?inv rdf:type bg:Inventory)
+    (?inv bg:currentInventory ?stock)
+    (?actor bg:demandRate ?rate)
+    swrlb:greaterThan(?rate, 0)
+    swrlb:divide(?coverage, ?stock, ?rate)
+    swrlb:lessThan(?coverage, ?leadTime)
+    ->
+    (?actor bg:hasStockoutRisk "true"^^xsd:boolean)
+]
+
+# Rule 4: Real Demand Propagation
+# Retailer's actual demand becomes Wholesaler's "actual demand"
+[DemandPropagation:
+    (?retailer rdf:type bg:Retailer)
+    (?wholesaler rdf:type bg:Wholesaler)
+    (?retailer bg:ordersFrom ?wholesaler)
+    (?demand rdf:type bg:CustomerDemand)
+    (?demand bg:actualDemand ?realDemand)
+    ->
+    (?wholesaler bg:demandRate ?realDemand)
+]
+
+# Rule 5: Inventory Coverage Calculation
+# Calculate weeks of inventory coverage
+[InventoryCoverage:
+    (?actor rdf:type bg:Actor)
+    (?inv rdf:type bg:Inventory)
+    (?inv bg:currentInventory ?stock)
+    (?actor bg:demandRate ?rate)
+    swrlb:greaterThan(?rate, 0)
+    swrlb:divide(?coverage, ?stock, ?rate)
+    ->
+    (?actor bg:inventoryCoverage ?coverage)
+]
+
+# Rule 6: Dynamic Budget Adjustment (Critical Situation)
+# IF stockout risk AND low coverage THEN increase budget 50%
+[BudgetIncrease:
+    (?actor rdf:type bg:Actor)
+    (?actor bg:hasStockoutRisk "true"^^xsd:boolean)
+    (?actor bg:inventoryCoverage ?coverage)
+    swrlb:lessThan(?coverage, 2.0)
+    (?actor bg:budgetConstraint ?normalBudget)
+    swrlb:multiply(?newBudget, ?normalBudget, 1.5)
+    ->
+    (?actor bg:budgetConstraint ?newBudget)
+]
+
+# Rule 7: Budget Restriction (Overstock)
+# IF inventory > optimal * 1.5 THEN reduce budget 50%
+[BudgetDecrease:
+    (?actor rdf:type bg:Actor)
+    (?inv rdf:type bg:Inventory)
+    (?inv bg:currentInventory ?stock)
+    (?actor bg:demandRate ?rate)
+    swrlb:multiply(?optimalStock, ?rate, 4.0)  # 4 weeks target
+    swrlb:multiply(?threshold, ?optimalStock, 1.5)
+    swrlb:greaterThan(?stock, ?threshold)
+    (?actor bg:budgetConstraint ?normalBudget)
+    swrlb:multiply(?newBudget, ?normalBudget, 0.5)
+    ->
+    (?actor bg:budgetConstraint ?newBudget)
+]
+
+# Rule 8: Cost Calculation
+# Total cost = holding cost + backlog cost
+[CostCalculation:
+    (?actor rdf:type bg:Actor)
+    (?inv rdf:type bg:Inventory)
+    (?inv bg:currentInventory ?stock)
+    (?inv bg:backlog ?backlog)
+    (?inv bg:holdingCost ?hCost)
+    (?inv bg:backlogCost ?bCost)
+    swrlb:multiply(?holdingTotal, ?stock, ?hCost)
+    swrlb:multiply(?backlogTotal, ?backlog, ?bCost)
+    swrlb:add(?totalCost, ?holdingTotal, ?backlogTotal)
+    ->
+    (?actor bg:totalCost ?totalCost)
+]
+
+# Rule 9: Shipment Arrival Calculation
+# Shipment arrives at current week + shipping delay
+[ShipmentArrival:
+    (?shipment rdf:type bg:Shipment)
+    (?shipment bg:weekNumber ?currentWeek)
+    (?shipment bg:shippedFrom ?actor)
+    (?actor bg:shippingDelay ?delay)
+    swrlb:add(?arrivalWeek, ?currentWeek, ?delay)
+    ->
+    (?shipment bg:arrivalWeek ?arrivalWeek)
+]
+
+# Rule 10: Order-Up-To Policy Detection
+# Advanced agents should maintain target inventory = demand * (lead time + review period)
+[OrderUpToPolicy:
+    (?actor rdf:type bg:Actor)
+    (?actor bg:demandRate ?rate)
+    (?actor bg:shippingDelay ?leadTime)
+    (?actor bg:orderDelay ?reviewPeriod)
+    (?inv bg:currentInventory ?currentStock)
+    swrlb:add(?totalDelay, ?leadTime, ?reviewPeriod)
+    swrlb:multiply(?targetStock, ?rate, ?totalDelay)
+    swrlb:subtract(?orderQty, ?targetStock, ?currentStock)
+    swrlb:max(?finalOrder, ?orderQty, 0)  # Don't order negative quantities
+    ->
+    (?actor bg:suggestedOrderQuantity ?finalOrder)
+]
