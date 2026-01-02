@@ -1,0 +1,121 @@
+@prefix bg: <http://beergame.org/ontology#>
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>
+
+
+Id: BullwhipDetection
+    a <rdf:type> <bg:Order>
+    a <bg:orderQuantity> b [Constraint b > 0]
+    a <bg:weekNumber> c
+    a <bg:placedBy> d
+    e <rdf:type> <bg:CustomerDemand>
+    e <bg:weekNumber> c
+    e <bg:actualDemand> f [Constraint f > 0]
+    g = b / f [Constraint g > 1.3]
+---------------------------------
+    d <bg:hasBullwhipRisk> "true"^^xsd:boolean
+    a <bg:orderAmplification> g
+
+
+Id: OrderCapping
+    a <rdf:type> <bg:Actor>
+    a <bg:hasBullwhipRisk> "true"^^xsd:boolean
+    b <rdf:type> <bg:CustomerDemand>
+    b <bg:actualDemand> c
+    d = c * 1.2
+---------------------------------
+    a <bg:maxOrderQuantity> d
+
+
+Id: StockoutRisk
+    a <rdf:type> <bg:Actor>
+    a <bg:shippingDelay> b
+    c <rdf:type> <bg:Inventory>
+    c <bg:currentInventory> d
+    a <bg:demandRate> e [Constraint e > 0]
+    f = d / e [Constraint f < b]
+---------------------------------
+    a <bg:hasStockoutRisk> "true"^^xsd:boolean
+
+
+Id: InventoryCoverage
+    a <rdf:type> <bg:Actor>
+    b <rdf:type> <bg:Inventory>
+    b <bg:currentInventory> c
+    a <bg:demandRate> d [Constraint d > 0]
+    e = c / d
+---------------------------------
+    a <bg:inventoryCoverage> e
+
+
+Id: BudgetIncrease
+    a <rdf:type> <bg:Actor>
+    a <bg:hasStockoutRisk> "true"^^xsd:boolean
+    a <bg:inventoryCoverage> b [Constraint b < 2.0]
+    a <bg:budgetConstraint> c
+    d = c * 1.5
+---------------------------------
+    a <bg:budgetConstraint> d
+
+
+Id: BudgetDecrease
+    a <rdf:type> <bg:Actor>
+    b <rdf:type> <bg:Inventory>
+    b <bg:currentInventory> c
+    a <bg:demandRate> d
+    e = d * 4.0
+    f = e * 1.5 [Constraint c > f]
+    a <bg:budgetConstraint> g
+    h = g * 0.5
+---------------------------------
+    a <bg:budgetConstraint> h
+
+
+Id: CostCalculation
+    a <rdf:type> <bg:Actor>
+    b <rdf:type> <bg:Inventory>
+    b <bg:currentInventory> c
+    b <bg:backlog> d
+    b <bg:holdingCost> e
+    b <bg:backlogCost> f
+    g = c * e
+    h = d * f
+    i = g + h
+---------------------------------
+    a <bg:totalCost> i
+
+
+Id: ShipmentArrival
+    a <rdf:type> <bg:Shipment>
+    a <bg:weekNumber> b
+    a <bg:shippedFrom> c
+    c <bg:shippingDelay> d
+    e = b + d
+---------------------------------
+    a <bg:arrivalWeek> e
+
+
+Id: OrderUpToPolicy
+    a <rdf:type> <bg:Actor>
+    a <bg:demandRate> b
+    a <bg:shippingDelay> c
+    a <bg:orderDelay> d
+    e <rdf:type> <bg:Inventory>
+    e <bg:currentInventory> f
+    g = c + d
+    h = b * g
+    i = h - f [Constraint i > 0]
+---------------------------------
+    a <bg:suggestedOrderQuantity> i
+
+
+Id: DemandSmoothing
+    a <rdf:type> <bg:Actor>
+    b <rdf:type> <bg:CustomerDemand>
+    b <bg:actualDemand> c
+    a <bg:demandRate> d
+    e = c * 0.3
+    f = d * 0.7
+    g = e + f
+---------------------------------
+    a <bg:demandRate> g

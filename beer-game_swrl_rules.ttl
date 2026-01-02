@@ -1,0 +1,485 @@
+# ============================================================
+# BEER DISTRIBUTION GAME - SWRL RULES
+# Causal reasoning rules for autonomous supply chain agents
+# Format: GraphDB-compatible SWRL syntax (Turtle)
+# ============================================================
+
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix swrl: <http://www.w3.org/2003/11/swrl#> .
+@prefix swrlb: <http://www.w3.org/2003/11/swrlb#> .
+@prefix bg: <http://beergame.org/ontology#> .
+
+#### SWRL RULE 1: BULLWHIP DETECTION ####
+# IF current order / actual demand > 1.3 THEN flag bullwhip risk
+
+bg:BullwhipDetectionRule a swrl:Imp ;
+    swrl:body [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:Order ;
+              swrl:argument1 ?order ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:orderQuantity ;
+              swrl:argument1 ?order ;
+              swrl:argument2 ?qty ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:weekNumber ;
+              swrl:argument1 ?order ;
+              swrl:argument2 ?week ]
+            [ a swrl:IndividualPropertyAtom ;
+              swrl:propertyPredicate bg:placedBy ;
+              swrl:argument1 ?order ;
+              swrl:argument2 ?actor ]
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:CustomerDemand ;
+              swrl:argument1 ?demand ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:weekNumber ;
+              swrl:argument1 ?demand ;
+              swrl:argument2 ?week ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:actualDemand ;
+              swrl:argument1 ?demand ;
+              swrl:argument2 ?realDemand ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:greaterThan ;
+              swrl:arguments ( ?realDemand 0 ) ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:divide ;
+              swrl:arguments ( ?ratio ?qty ?realDemand ) ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:greaterThan ;
+              swrl:arguments ( ?ratio 1.3 ) ]
+        )
+    ] ;
+    swrl:head [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:hasBullwhipRisk ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 "true"^^xsd:boolean ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:orderAmplification ;
+              swrl:argument1 ?order ;
+              swrl:argument2 ?ratio ]
+        )
+    ] ;
+    #rdfs:label 'Bullwhip Detection Rule' ;
+    #rdfs:comment 'Detects when orders are amplified beyond 30% of actual demand' .
+
+#### SWRL RULE 2: ORDER CAPPING (GUARDRAIL) ####
+# IF bullwhip risk detected THEN cap order at realDemand * 1.2
+
+bg:OrderCappingRule a swrl:Imp ;
+    swrl:body [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:Actor ;
+              swrl:argument1 ?actor ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:hasBullwhipRisk ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 "true"^^xsd:boolean ]
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:CustomerDemand ;
+              swrl:argument1 ?demand ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:actualDemand ;
+              swrl:argument1 ?demand ;
+              swrl:argument2 ?realDemand ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:multiply ;
+              swrl:arguments ( ?maxOrder ?realDemand 1.2 ) ]
+        )
+    ] ;
+    swrl:head [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:maxOrderQuantity ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?maxOrder ]
+        )
+    ] ;
+    #rdfs:label 'Order Capping Guardrail' ;
+    #rdfs:comment 'Caps order quantity at 120% of actual demand when bullwhip risk is detected' .
+
+#### SWRL RULE 3: STOCKOUT RISK DETECTION ####
+# IF inventory coverage < lead time THEN flag stockout risk
+
+bg:StockoutRiskRule a swrl:Imp ;
+    swrl:body [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:Actor ;
+              swrl:argument1 ?actor ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:shippingDelay ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?leadTime ]
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:Inventory ;
+              swrl:argument1 ?inv ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:currentInventory ;
+              swrl:argument1 ?inv ;
+              swrl:argument2 ?stock ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:demandRate ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?rate ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:greaterThan ;
+              swrl:arguments ( ?rate 0 ) ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:divide ;
+              swrl:arguments ( ?coverage ?stock ?rate ) ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:lessThan ;
+              swrl:arguments ( ?coverage ?leadTime ) ]
+        )
+    ] ;
+    swrl:head [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:hasStockoutRisk ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 "true"^^xsd:boolean ]
+        )
+    ] ;
+    #rdfs:label 'Stockout Risk Detection' ;
+    #rdfs:comment 'Flags actors at risk of stockout when inventory coverage is below lead time' .
+
+#### SWRL RULE 4: INVENTORY COVERAGE CALCULATION ####
+# Calculate weeks of inventory coverage
+
+bg:InventoryCoverageRule a swrl:Imp ;
+    swrl:body [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:Actor ;
+              swrl:argument1 ?actor ]
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:Inventory ;
+              swrl:argument1 ?inv ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:currentInventory ;
+              swrl:argument1 ?inv ;
+              swrl:argument2 ?stock ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:demandRate ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?rate ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:greaterThan ;
+              swrl:arguments ( ?rate 0 ) ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:divide ;
+              swrl:arguments ( ?coverage ?stock ?rate ) ]
+        )
+    ] ;
+    swrl:head [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:inventoryCoverage ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?coverage ]
+        )
+    ] ;
+    #rdfs:label 'Inventory Coverage Calculation' ;
+    #rdfs:comment 'Calculates how many weeks of demand the current inventory can satisfy' .
+
+#### SWRL RULE 5: DYNAMIC BUDGET INCREASE (CRITICAL SITUATION) ####
+# IF stockout risk AND low coverage THEN increase budget 50%
+
+bg:BudgetIncreaseRule a swrl:Imp ;
+    swrl:body [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:Actor ;
+              swrl:argument1 ?actor ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:hasStockoutRisk ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 "true"^^xsd:boolean ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:inventoryCoverage ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?coverage ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:lessThan ;
+              swrl:arguments ( ?coverage 2.0 ) ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:budgetConstraint ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?normalBudget ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:multiply ;
+              swrl:arguments ( ?newBudget ?normalBudget 1.5 ) ]
+        )
+    ] ;
+    swrl:head [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:budgetConstraint ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?newBudget ]
+        )
+    ] ;
+    #rdfs:label 'Emergency Budget Increase' ;
+    #rdfs:comment 'Increases budget by 50% when facing critical stockout risk' .
+
+#### SWRL RULE 6: DYNAMIC BUDGET DECREASE (OVERSTOCK) ####
+# IF inventory > optimal * 1.5 THEN reduce budget 50%
+
+bg:BudgetDecreaseRule a swrl:Imp ;
+    swrl:body [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:Actor ;
+              swrl:argument1 ?actor ]
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:Inventory ;
+              swrl:argument1 ?inv ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:currentInventory ;
+              swrl:argument1 ?inv ;
+              swrl:argument2 ?stock ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:demandRate ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?rate ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:multiply ;
+              swrl:arguments ( ?optimalStock ?rate 4.0 ) ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:multiply ;
+              swrl:arguments ( ?threshold ?optimalStock 1.5 ) ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:greaterThan ;
+              swrl:arguments ( ?stock ?threshold ) ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:budgetConstraint ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?normalBudget ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:multiply ;
+              swrl:arguments ( ?newBudget ?normalBudget 0.5 ) ]
+        )
+    ] ;
+    swrl:head [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:budgetConstraint ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?newBudget ]
+        )
+    ] ;
+    #rdfs:label 'Overstock Budget Restriction' ;
+    #rdfs:comment 'Reduces budget by 50% when inventory exceeds 150% of optimal level (4 weeks)' .
+
+#### SWRL RULE 7: TOTAL COST CALCULATION ####
+# Total cost = (inventory * holding cost) + (backlog * backlog cost)
+
+bg:CostCalculationRule a swrl:Imp ;
+    swrl:body [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:Actor ;
+              swrl:argument1 ?actor ]
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:Inventory ;
+              swrl:argument1 ?inv ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:currentInventory ;
+              swrl:argument1 ?inv ;
+              swrl:argument2 ?stock ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:backlog ;
+              swrl:argument1 ?inv ;
+              swrl:argument2 ?backlog ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:holdingCost ;
+              swrl:argument1 ?inv ;
+              swrl:argument2 ?hCost ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:backlogCost ;
+              swrl:argument1 ?inv ;
+              swrl:argument2 ?bCost ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:multiply ;
+              swrl:arguments ( ?holdingTotal ?stock ?hCost ) ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:multiply ;
+              swrl:arguments ( ?backlogTotal ?backlog ?bCost ) ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:add ;
+              swrl:arguments ( ?totalCost ?holdingTotal ?backlogTotal ) ]
+        )
+    ] ;
+    swrl:head [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:totalCost ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?totalCost ]
+        )
+    ] ;
+    #rdfs:label 'Cost Calculation Rule' ;
+    #rdfs:comment 'Calculates total weekly cost as sum of holding and backlog costs' .
+
+#### SWRL RULE 8: SHIPMENT ARRIVAL CALCULATION ####
+# Shipment arrives at current week + shipping delay
+
+bg:ShipmentArrivalRule a swrl:Imp ;
+    swrl:body [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:Shipment ;
+              swrl:argument1 ?shipment ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:weekNumber ;
+              swrl:argument1 ?shipment ;
+              swrl:argument2 ?currentWeek ]
+            [ a swrl:IndividualPropertyAtom ;
+              swrl:propertyPredicate bg:shippedFrom ;
+              swrl:argument1 ?shipment ;
+              swrl:argument2 ?actor ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:shippingDelay ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?delay ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:add ;
+              swrl:arguments ( ?arrivalWeek ?currentWeek ?delay ) ]
+        )
+    ] ;
+    swrl:head [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:arrivalWeek ;
+              swrl:argument1 ?shipment ;
+              swrl:argument2 ?arrivalWeek ]
+        )
+    ] ;
+    #rdfs:label 'Shipment Arrival Calculation' ;
+    #rdfs:comment 'Calculates when a shipment will arrive based on shipping delay' .
+
+#### SWRL RULE 9: ORDER-UP-TO POLICY (SUGGESTED ORDER) ####
+# Target inventory = demand * (lead time + review period)
+# Suggested order = target - current inventory (if positive)
+
+bg:OrderUpToPolicyRule a swrl:Imp ;
+    swrl:body [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:Actor ;
+              swrl:argument1 ?actor ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:demandRate ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?rate ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:shippingDelay ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?leadTime ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:orderDelay ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?reviewPeriod ]
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:Inventory ;
+              swrl:argument1 ?inv ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:currentInventory ;
+              swrl:argument1 ?inv ;
+              swrl:argument2 ?currentStock ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:add ;
+              swrl:arguments ( ?totalDelay ?leadTime ?reviewPeriod ) ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:multiply ;
+              swrl:arguments ( ?targetStock ?rate ?totalDelay ) ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:subtract ;
+              swrl:arguments ( ?orderQty ?targetStock ?currentStock ) ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:greaterThan ;
+              swrl:arguments ( ?orderQty 0 ) ]
+        )
+    ] ;
+    swrl:head [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:suggestedOrderQuantity ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?orderQty ]
+        )
+    ] ;
+    #rdfs:label 'Order-Up-To Policy' ;
+    #rdfs:comment 'Calculates suggested order quantity based on classic order-up-to policy' .
+
+#### SWRL RULE 10: DEMAND RATE SMOOTHING (EXPONENTIAL SMOOTHING) ####
+# Smooth demand rate using exponential smoothing: newRate = alpha * currentDemand + (1-alpha) * oldRate
+# Alpha = 0.3 (30% weight to new observation)
+
+bg:DemandSmoothingRule a swrl:Imp ;
+    swrl:body [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:Actor ;
+              swrl:argument1 ?actor ]
+            [ a swrl:ClassAtom ;
+              swrl:classPredicate bg:CustomerDemand ;
+              swrl:argument1 ?demand ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:actualDemand ;
+              swrl:argument1 ?demand ;
+              swrl:argument2 ?currentDemand ]
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:demandRate ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?oldRate ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:multiply ;
+              swrl:arguments ( ?newPart ?currentDemand 0.3 ) ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:multiply ;
+              swrl:arguments ( ?oldPart ?oldRate 0.7 ) ]
+            [ a swrl:BuiltinAtom ;
+              swrl:builtin swrlb:add ;
+              swrl:arguments ( ?smoothedRate ?newPart ?oldPart ) ]
+        )
+    ] ;
+    swrl:head [
+        a swrl:AtomList ;
+        swrl:elements (
+            [ a swrl:DatavaluedPropertyAtom ;
+              swrl:propertyPredicate bg:demandRate ;
+              swrl:argument1 ?actor ;
+              swrl:argument2 ?smoothedRate ]
+        )
+    ] ;
+    #rdfs:label 'Demand Rate Exponential Smoothing' ;
+    #rdfs:comment 'Smooths demand rate to avoid overreacting to short-term fluctuations' .

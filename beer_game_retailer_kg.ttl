@@ -84,14 +84,14 @@ bg_retailer:InternalData_Week1 a bg:InternalMetrics ;
 
 # Query 1: Get wholesaler's lead time
 # SELECT ?leadTime WHERE {
-#   SERVICE <http://localhost:7200/repositories/BeerGame_Wholesaler> {
+#   SERVICE <http://localhost:7200/repositories/BG_Whosaler> {
 #     bg_wholesaler:Wholesaler_Beta bg:shippingDelay ?leadTime .
 #   }
 # }
 
 # Query 2: Check if shipment is delayed
 # SELECT ?status WHERE {
-#   SERVICE <http://localhost:7200/repositories/BeerGame_Wholesaler> {
+#   SERVICE <http://localhost:7200/repositories/BG_Whosaler> {
 #     ?shipment bg:shippedTo bg_retailer:Retailer_Alpha ;
 #               bg:arrivalWeek ?week ;
 #               bg:trackingStatus ?status .

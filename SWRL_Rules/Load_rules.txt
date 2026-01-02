@@ -1,0 +1,3 @@
+curl -X POST -H "Content-Type: text/plain" \
+  --data-binary @bullwhip-detection.pie \
+   "http://localhost:7200/rest/rules/BG_Retailer"

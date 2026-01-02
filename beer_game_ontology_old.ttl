@@ -1,6 +1,6 @@
 # ============================================================
 # BEER DISTRIBUTION GAME - SHARED ONTOLOGY
-# Based on HBR "When Supply Chains Become Autonomous" (Dec 2024)
+# Based on HBR "When Supply Chains Become Autonomous" (Dec 2025)
 # Adapted from Sulzer Supply Chain Ontology
 # ============================================================
 
@@ -271,29 +271,149 @@ bg:defaultOrderDelay a owl:DatatypeProperty ;
     rdfs:range xsd:integer ;
     owl:equivalentProperty [ rdf:value "1"^^xsd:integer ] .
 
-#### SWRL RULES (Import Separately) ####
+#### SWRL RULES ####
 
-# SWRL rules are defined in a separate file: beer-game-swrl-rules.ttl
-# This separation is necessary because:
-# 1. GraphDB and other triple stores require specific SWRL syntax
-# 2. Rules can be imported/updated independently from the ontology
-# 3. Different reasoning engines may require different rule formats
+# Rule 1: Bullwhip Detection
+# IF current order / actual demand > 1.3 THEN flag bullwhip risk
+#[BullwhipDetection:
+[
+    (?order rdf:type bg:Order)
+    (?order bg:orderQuantity ?qty)
+    (?order bg:weekNumber ?week)
+    (?order bg:placedBy ?actor)
+    (?demand rdf:type bg:CustomerDemand)
+    (?demand bg:weekNumber ?week)
+    (?demand bg:actualDemand ?realDemand)
+    swrlb:greaterThan(?realDemand, 0)
+    swrlb:divide(?ratio, ?qty, ?realDemand)
+    swrlb:greaterThan(?ratio, 1.3)
+    ->
+    (?actor bg:hasBullwhipRisk "true"^^xsd:boolean)
+    (?order bg:orderAmplification ?ratio)
+]
 
-# To use SWRL rules in GraphDB:
-# 1. Import this ontology file first
-# 2. Then import beer-game-swrl-rules.ttl
-# 3. Enable reasoning in repository settings (RDFS+ or OWL-Horst)
+# Rule 2: Order Capping (Guardrail)
+# IF bullwhip risk detected THEN cap order at realDemand * 1.2
+#[OrderCapping:
+[
+    (?actor rdf:type bg:Actor)
+    (?actor bg:hasBullwhipRisk "true"^^xsd:boolean)
+    (?demand rdf:type bg:CustomerDemand)
+    (?demand bg:actualDemand ?realDemand)
+    swrlb:multiply(?maxOrder, ?realDemand, 1.2)
+    ->
+    (?actor bg:maxOrderQuantity ?maxOrder)
+]
 
-# Available SWRL rules:
-# - Rule 1: Bullwhip Detection (order/demand > 1.3)
-# - Rule 2: Order Capping Guardrail (cap at demand * 1.2)
-# - Rule 3: Stockout Risk Detection (coverage < lead time)
-# - Rule 4: Inventory Coverage Calculation
-# - Rule 5: Dynamic Budget Increase (emergency situations)
-# - Rule 6: Dynamic Budget Decrease (overstock)
-# - Rule 7: Total Cost Calculation
-# - Rule 8: Shipment Arrival Calculation
-# - Rule 9: Order-Up-To Policy
-# - Rule 10: Demand Rate Smoothing (exponential)
+# Rule 3: Stockout Risk Detection
+# IF inventory coverage < lead time THEN flag stockout risk
+[StockoutRisk:
+    (?actor rdf:type bg:Actor)
+    (?actor bg:shippingDelay ?leadTime)
+    (?inv rdf:type bg:Inventory)
+    (?inv bg:currentInventory ?stock)
+    (?actor bg:demandRate ?rate)
+    swrlb:greaterThan(?rate, 0)
+    swrlb:divide(?coverage, ?stock, ?rate)
+    swrlb:lessThan(?coverage, ?leadTime)
+    ->
+    (?actor bg:hasStockoutRisk "true"^^xsd:boolean)
+]
 
-# For detailed rule definitions, see: beer-game-swrl-rules.ttl
+# Rule 4: Real Demand Propagation
+# Retailer's actual demand becomes Wholesaler's "actual demand"
+[DemandPropagation:
+    (?retailer rdf:type bg:Retailer)
+    (?wholesaler rdf:type bg:Wholesaler)
+    (?retailer bg:ordersFrom ?wholesaler)
+    (?demand rdf:type bg:CustomerDemand)
+    (?demand bg:actualDemand ?realDemand)
+    ->
+    (?wholesaler bg:demandRate ?realDemand)
+]
+
+# Rule 5: Inventory Coverage Calculation
+# Calculate weeks of inventory coverage
+[InventoryCoverage:
+    (?actor rdf:type bg:Actor)
+    (?inv rdf:type bg:Inventory)
+    (?inv bg:currentInventory ?stock)
+    (?actor bg:demandRate ?rate)
+    swrlb:greaterThan(?rate, 0)
+    swrlb:divide(?coverage, ?stock, ?rate)
+    ->
+    (?actor bg:inventoryCoverage ?coverage)
+]
+
+# Rule 6: Dynamic Budget Adjustment (Critical Situation)
+# IF stockout risk AND low coverage THEN increase budget 50%
+[BudgetIncrease:
+    (?actor rdf:type bg:Actor)
+    (?actor bg:hasStockoutRisk "true"^^xsd:boolean)
+    (?actor bg:inventoryCoverage ?coverage)
+    swrlb:lessThan(?coverage, 2.0)
+    (?actor bg:budgetConstraint ?normalBudget)
+    swrlb:multiply(?newBudget, ?normalBudget, 1.5)
+    ->
+    (?actor bg:budgetConstraint ?newBudget)
+]
+
+# Rule 7: Budget Restriction (Overstock)
+# IF inventory > optimal * 1.5 THEN reduce budget 50%
+[BudgetDecrease:
+    (?actor rdf:type bg:Actor)
+    (?inv rdf:type bg:Inventory)
+    (?inv bg:currentInventory ?stock)
+    (?actor bg:demandRate ?rate)
+    swrlb:multiply(?optimalStock, ?rate, 4.0)  # 4 weeks target
+    swrlb:multiply(?threshold, ?optimalStock, 1.5)
+    swrlb:greaterThan(?stock, ?threshold)
+    (?actor bg:budgetConstraint ?normalBudget)
+    swrlb:multiply(?newBudget, ?normalBudget, 0.5)
+    ->
+    (?actor bg:budgetConstraint ?newBudget)
+]
+
+# Rule 8: Cost Calculation
+# Total cost = holding cost + backlog cost
+[CostCalculation:
+    (?actor rdf:type bg:Actor)
+    (?inv rdf:type bg:Inventory)
+    (?inv bg:currentInventory ?stock)
+    (?inv bg:backlog ?backlog)
+    (?inv bg:holdingCost ?hCost)
+    (?inv bg:backlogCost ?bCost)
+    swrlb:multiply(?holdingTotal, ?stock, ?hCost)
+    swrlb:multiply(?backlogTotal, ?backlog, ?bCost)
+    swrlb:add(?totalCost, ?holdingTotal, ?backlogTotal)
+    ->
+    (?actor bg:totalCost ?totalCost)
+]
+
+# Rule 9: Shipment Arrival Calculation
+# Shipment arrives at current week + shipping delay
+[ShipmentArrival:
+    (?shipment rdf:type bg:Shipment)
+    (?shipment bg:weekNumber ?currentWeek)
+    (?shipment bg:shippedFrom ?actor)
+    (?actor bg:shippingDelay ?delay)
+    swrlb:add(?arrivalWeek, ?currentWeek, ?delay)
+    ->
+    (?shipment bg:arrivalWeek ?arrivalWeek)
+]
+
+# Rule 10: Order-Up-To Policy Detection
+# Advanced agents should maintain target inventory = demand * (lead time + review period)
+[OrderUpToPolicy:
+    (?actor rdf:type bg:Actor)
+    (?actor bg:demandRate ?rate)
+    (?actor bg:shippingDelay ?leadTime)
+    (?actor bg:orderDelay ?reviewPeriod)
+    (?inv bg:currentInventory ?currentStock)
+    swrlb:add(?totalDelay, ?leadTime, ?reviewPeriod)
+    swrlb:multiply(?targetStock, ?rate, ?totalDelay)
+    swrlb:subtract(?orderQty, ?targetStock, ?currentStock)
+    swrlb:max(?finalOrder, ?orderQty, 0)  # Don't order negative quantities
+    ->
+    (?actor bg:suggestedOrderQuantity ?finalOrder)
+]

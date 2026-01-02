@@ -1,0 +1,250 @@
+/**
+ * ============================================================
+ * BEER DISTRIBUTION GAME - PIE RULES
+ * GraphDB native reasoning format (Phased Incremental Evaluation)
+ * More efficient and reliable than SWRL
+ * ============================================================
+ */
+
+// Prefix declarations
+@prefix bg: <http://beergame.org/ontology#>
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#>
+
+/**
+ * RULE 1: BULLWHIP DETECTION
+ * IF order quantity / actual demand > 1.3 THEN flag bullwhip risk
+ */
+Id: BullwhipDetection
+    ?order <rdf:type> <bg:Order>
+    ?order <bg:orderQuantity> ?qty
+    ?order <bg:weekNumber> ?week
+    ?order <bg:placedBy> ?actor
+    ?demand <rdf:type> <bg:CustomerDemand>
+    ?demand <bg:weekNumber> ?week
+    ?demand <bg:actualDemand> ?realDemand
+    Bind(?realDemand > 0)
+    Bind(?ratio = ?qty / ?realDemand)
+    Bind(?ratio > 1.3)
+---------------------------------
+    ?actor <bg:hasBullwhipRisk> "true"^^xsd:boolean
+    ?order <bg:orderAmplification> ?ratio
+
+
+/**
+ * RULE 2: ORDER CAPPING (GUARDRAIL)
+ * IF bullwhip risk detected THEN cap max order at realDemand * 1.2
+ */
+Id: OrderCapping
+    ?actor <rdf:type> <bg:Actor>
+    ?actor <bg:hasBullwhipRisk> "true"^^xsd:boolean
+    ?demand <rdf:type> <bg:CustomerDemand>
+    ?demand <bg:actualDemand> ?realDemand
+    Bind(?maxOrder = ?realDemand * 1.2)
+---------------------------------
+    ?actor <bg:maxOrderQuantity> ?maxOrder
+
+
+/**
+ * RULE 3: STOCKOUT RISK DETECTION
+ * IF inventory coverage < lead time THEN flag stockout risk
+ */
+Id: StockoutRisk
+    ?actor <rdf:type> <bg:Actor>
+    ?actor <bg:shippingDelay> ?leadTime
+    ?inv <rdf:type> <bg:Inventory>
+    ?inv <bg:currentInventory> ?stock
+    ?actor <bg:demandRate> ?rate
+    Bind(?rate > 0)
+    Bind(?coverage = ?stock / ?rate)
+    Bind(?coverage < ?leadTime)
+---------------------------------
+    ?actor <bg:hasStockoutRisk> "true"^^xsd:boolean
+
+
+/**
+ * RULE 4: INVENTORY COVERAGE CALCULATION
+ * Calculate how many weeks of inventory coverage exists
+ */
+Id: InventoryCoverage
+    ?actor <rdf:type> <bg:Actor>
+    ?inv <rdf:type> <bg:Inventory>
+    ?inv <bg:currentInventory> ?stock
+    ?actor <bg:demandRate> ?rate
+    Bind(?rate > 0)
+    Bind(?coverage = ?stock / ?rate)
+---------------------------------
+    ?actor <bg:inventoryCoverage> ?coverage
+
+
+/**
+ * RULE 5: DYNAMIC BUDGET INCREASE (EMERGENCY)
+ * IF stockout risk AND low coverage THEN increase budget by 50%
+ */
+Id: BudgetIncrease
+    ?actor <rdf:type> <bg:Actor>
+    ?actor <bg:hasStockoutRisk> "true"^^xsd:boolean
+    ?actor <bg:inventoryCoverage> ?coverage
+    Bind(?coverage < 2.0)
+    ?actor <bg:budgetConstraint> ?normalBudget
+    Bind(?newBudget = ?normalBudget * 1.5)
+---------------------------------
+    ?actor <bg:budgetConstraint> ?newBudget
+
+
+/**
+ * RULE 6: DYNAMIC BUDGET DECREASE (OVERSTOCK)
+ * IF inventory > optimal * 1.5 THEN reduce budget by 50%
+ * Optimal inventory = 4 weeks of demand
+ */
+Id: BudgetDecrease
+    ?actor <rdf:type> <bg:Actor>
+    ?inv <rdf:type> <bg:Inventory>
+    ?inv <bg:currentInventory> ?stock
+    ?actor <bg:demandRate> ?rate
+    Bind(?optimalStock = ?rate * 4.0)
+    Bind(?threshold = ?optimalStock * 1.5)
+    Bind(?stock > ?threshold)
+    ?actor <bg:budgetConstraint> ?normalBudget
+    Bind(?newBudget = ?normalBudget * 0.5)
+---------------------------------
+    ?actor <bg:budgetConstraint> ?newBudget
+
+
+/**
+ * RULE 7: TOTAL COST CALCULATION
+ * Total cost = (inventory * holding cost) + (backlog * backlog cost)
+ */
+Id: CostCalculation
+    ?actor <rdf:type> <bg:Actor>
+    ?inv <rdf:type> <bg:Inventory>
+    ?inv <bg:currentInventory> ?stock
+    ?inv <bg:backlog> ?backlog
+    ?inv <bg:holdingCost> ?hCost
+    ?inv <bg:backlogCost> ?bCost
+    Bind(?holdingTotal = ?stock * ?hCost)
+    Bind(?backlogTotal = ?backlog * ?bCost)
+    Bind(?totalCost = ?holdingTotal + ?backlogTotal)
+---------------------------------
+    ?actor <bg:totalCost> ?totalCost
+
+
+/**
+ * RULE 8: SHIPMENT ARRIVAL CALCULATION
+ * Shipment arrives at current week + shipping delay
+ */
+Id: ShipmentArrival
+    ?shipment <rdf:type> <bg:Shipment>
+    ?shipment <bg:weekNumber> ?currentWeek
+    ?shipment <bg:shippedFrom> ?actor
+    ?actor <bg:shippingDelay> ?delay
+    Bind(?arrivalWeek = ?currentWeek + ?delay)
+---------------------------------
+    ?shipment <bg:arrivalWeek> ?arrivalWeek
+
+
+/**
+ * RULE 9: ORDER-UP-TO POLICY (SUGGESTED ORDER)
+ * Target inventory = demand * (lead time + review period)
+ * Suggested order = target - current inventory (if positive)
+ */
+Id: OrderUpToPolicy
+    ?actor <rdf:type> <bg:Actor>
+    ?actor <bg:demandRate> ?rate
+    ?actor <bg:shippingDelay> ?leadTime
+    ?actor <bg:orderDelay> ?reviewPeriod
+    ?inv <rdf:type> <bg:Inventory>
+    ?inv <bg:currentInventory> ?currentStock
+    Bind(?totalDelay = ?leadTime + ?reviewPeriod)
+    Bind(?targetStock = ?rate * ?totalDelay)
+    Bind(?orderQty = ?targetStock - ?currentStock)
+    Bind(?orderQty > 0)
+---------------------------------
+    ?actor <bg:suggestedOrderQuantity> ?orderQty
+
+
+/**
+ * RULE 10: DEMAND RATE EXPONENTIAL SMOOTHING
+ * Smooth demand to avoid overreacting to short-term fluctuations
+ * New rate = 0.3 * current demand + 0.7 * old rate
+ */
+Id: DemandSmoothing
+    ?actor <rdf:type> <bg:Actor>
+    ?demand <rdf:type> <bg:CustomerDemand>
+    ?demand <bg:actualDemand> ?currentDemand
+    ?actor <bg:demandRate> ?oldRate
+    Bind(?newPart = ?currentDemand * 0.3)
+    Bind(?oldPart = ?oldRate * 0.7)
+    Bind(?smoothedRate = ?newPart + ?oldPart)
+---------------------------------
+    ?actor <bg:demandRate> ?smoothedRate
+
+
+/**
+ * RULE 11: DEMAND PROPAGATION (RETAILER TO WHOLESALER)
+ * Wholesaler should track retailer's ACTUAL customer demand, not just orders
+ * This prevents bullwhip amplification
+ */
+Id: DemandPropagationRetailerToWholesaler
+    ?retailer <rdf:type> <bg:Retailer>
+    ?wholesaler <rdf:type> <bg:Wholesaler>
+    ?retailer <bg:ordersFrom> ?wholesaler
+    ?demand <rdf:type> <bg:CustomerDemand>
+    ?demand <bg:actualDemand> ?realDemand
+---------------------------------
+    ?wholesaler <bg:actualCustomerDemand> ?realDemand
+
+
+/**
+ * RULE 12: ZERO INVENTORY IMPLIES STOCKOUT RISK
+ * If inventory drops to zero, automatically flag stockout risk
+ */
+Id: ZeroInventoryStockout
+    ?actor <rdf:type> <bg:Actor>
+    ?inv <rdf:type> <bg:Inventory>
+    ?inv <bg:currentInventory> ?stock
+    Bind(?stock <= 0)
+---------------------------------
+    ?actor <bg:hasStockoutRisk> "true"^^xsd:boolean
+
+
+/**
+ * RULE 13: HIGH BACKLOG PENALTY
+ * If backlog > 10 units, flag critical situation
+ */
+Id: HighBacklogPenalty
+    ?actor <rdf:type> <bg:Actor>
+    ?inv <rdf:type> <bg:Inventory>
+    ?inv <bg:backlog> ?backlog
+    Bind(?backlog > 10)
+---------------------------------
+    ?actor <bg:hasCriticalBacklog> "true"^^xsd:boolean
+
+
+/**
+ * RULE 14: ORDER VALIDATION (NON-NEGATIVE)
+ * Ensure no negative orders are placed
+ * If suggested order < 0, set to 0
+ */
+Id: OrderValidation
+    ?actor <rdf:type> <bg:Actor>
+    ?actor <bg:suggestedOrderQuantity> ?orderQty
+    Bind(?orderQty < 0)
+---------------------------------
+    ?actor <bg:suggestedOrderQuantity> "0"^^xsd:integer
+
+
+/**
+ * RULE 15: INVENTORY POSITION CALCULATION
+ * Inventory position = current inventory + incoming shipments - backlog
+ * This gives a more accurate picture of actual stock
+ */
+Id: InventoryPosition
+    ?actor <rdf:type> <bg:Actor>
+    ?inv <rdf:type> <bg:Inventory>
+    ?inv <bg:currentInventory> ?stock
+    ?inv <bg:incomingShipment> ?incoming
+    ?inv <bg:backlog> ?backlog
+    Bind(?position = ?stock + ?incoming - ?backlog)
+---------------------------------
+    ?actor <bg:inventoryPosition> ?position

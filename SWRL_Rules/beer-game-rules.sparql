@@ -1,0 +1,247 @@
+# ============================================================
+# BEER DISTRIBUTION GAME - SPARQL CONSTRUCT RULES
+# Converted from SWRL to SPARQL CONSTRUCT for GraphDB 10.8.2
+# Execute these rules weekly via Python orchestrator
+# ============================================================
+
+PREFIX bg: <http://beergame.org/ontology#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+#### RULE 1: BULLWHIP DETECTION ####
+# IF current order / actual demand > 1.3 THEN flag bullwhip risk
+
+INSERT {
+  ?actor bg:hasBullwhipRisk "true"^^xsd:boolean .
+  ?order bg:orderAmplification ?ratio .
+}
+WHERE {
+  ?order a bg:Order ;
+         bg:orderQuantity ?qty ;
+         bg:weekNumber ?week ;
+         bg:placedBy ?actor .
+  
+  ?demand a bg:CustomerDemand ;
+          bg:weekNumber ?week ;
+          bg:actualDemand ?realDemand .
+  
+  FILTER(?realDemand > 0)
+  BIND(?qty / ?realDemand AS ?ratio)
+  FILTER(?ratio > 1.3)
+  
+  # Evitar duplicados
+  FILTER NOT EXISTS {
+    ?order bg:orderAmplification ?existingRatio .
+  }
+}
+
+#### RULE 2: ORDER CAPPING (GUARDRAIL) ####
+# IF bullwhip risk detected THEN cap order at realDemand * 1.2
+
+INSERT {
+  ?actor bg:maxOrderQuantity ?maxOrder .
+}
+WHERE {
+  ?actor a bg:Actor ;
+         bg:hasBullwhipRisk "true"^^xsd:boolean .
+  
+  ?demand a bg:CustomerDemand ;
+          bg:actualDemand ?realDemand .
+  
+  BIND(?realDemand * 1.2 AS ?maxOrder)
+  
+  FILTER NOT EXISTS {
+    ?actor bg:maxOrderQuantity ?existingMax .
+  }
+}
+
+#### RULE 3: STOCKOUT RISK DETECTION ####
+# IF inventory coverage < lead time THEN flag stockout risk
+
+INSERT {
+  ?actor bg:hasStockoutRisk "true"^^xsd:boolean .
+}
+WHERE {
+  ?actor a bg:Actor ;
+         bg:shippingDelay ?leadTime .
+  
+  ?inv a bg:Inventory ;
+       bg:currentInventory ?stock .
+  
+  ?actor bg:demandRate ?rate .
+  
+  FILTER(?rate > 0)
+  BIND(?stock / ?rate AS ?coverage)
+  FILTER(?coverage < ?leadTime)
+  
+  FILTER NOT EXISTS {
+    ?actor bg:hasStockoutRisk "true"^^xsd:boolean .
+  }
+}
+
+#### RULE 4: INVENTORY COVERAGE CALCULATION ####
+# Calculate weeks of inventory coverage
+
+INSERT {
+  ?actor bg:inventoryCoverage ?coverage .
+}
+WHERE {
+  ?actor a bg:Actor .
+  
+  ?inv a bg:Inventory ;
+       bg:currentInventory ?stock .
+  
+  ?actor bg:demandRate ?rate .
+  
+  FILTER(?rate > 0)
+  BIND(?stock / ?rate AS ?coverage)
+  
+  FILTER NOT EXISTS {
+    ?actor bg:inventoryCoverage ?existingCoverage .
+  }
+}
+
+#### RULE 5: DYNAMIC BUDGET INCREASE (CRITICAL SITUATION) ####
+# IF stockout risk AND low coverage THEN increase budget 50%
+
+INSERT {
+  ?actor bg:budgetConstraint ?newBudget .
+}
+WHERE {
+  ?actor a bg:Actor ;
+         bg:hasStockoutRisk "true"^^xsd:boolean ;
+         bg:inventoryCoverage ?coverage ;
+         bg:budgetConstraint ?normalBudget .
+  
+  FILTER(?coverage < 2.0)
+  BIND(?normalBudget * 1.5 AS ?newBudget)
+  
+  # Solo actualizar si el nuevo budget es mayor
+  FILTER NOT EXISTS {
+    ?actor bg:budgetConstraint ?currentBudget .
+    FILTER(?currentBudget >= ?newBudget)
+  }
+}
+
+#### RULE 6: DYNAMIC BUDGET DECREASE (OVERSTOCK) ####
+# IF inventory > optimal * 1.5 THEN reduce budget 50%
+
+INSERT {
+  ?actor bg:budgetConstraint ?newBudget .
+}
+WHERE {
+  ?actor a bg:Actor ;
+         bg:demandRate ?rate ;
+         bg:budgetConstraint ?normalBudget .
+  
+  ?inv a bg:Inventory ;
+       bg:currentInventory ?stock .
+  
+  # Calcular stock óptimo (4 semanas de demanda)
+  BIND(?rate * 4.0 AS ?optimalStock)
+  BIND(?optimalStock * 1.5 AS ?threshold)
+  
+  FILTER(?stock > ?threshold)
+  BIND(?normalBudget * 0.5 AS ?newBudget)
+  
+  # Solo actualizar si el nuevo budget es menor
+  FILTER NOT EXISTS {
+    ?actor bg:budgetConstraint ?currentBudget .
+    FILTER(?currentBudget <= ?newBudget)
+  }
+}
+
+#### RULE 7: TOTAL COST CALCULATION ####
+# Total cost = (inventory * holding cost) + (backlog * backlog cost)
+
+INSERT {
+  ?actor bg:totalCost ?totalCost .
+}
+WHERE {
+  ?actor a bg:Actor .
+  
+  ?inv a bg:Inventory ;
+       bg:currentInventory ?stock ;
+       bg:backlog ?backlog ;
+       bg:holdingCost ?hCost ;
+       bg:backlogCost ?bCost .
+  
+  BIND((?stock * ?hCost) + (?backlog * ?bCost) AS ?totalCost)
+  
+  FILTER NOT EXISTS {
+    ?actor bg:totalCost ?existingCost .
+  }
+}
+
+#### RULE 8: SHIPMENT ARRIVAL CALCULATION ####
+# Shipment arrives at current week + shipping delay
+
+INSERT {
+  ?shipment bg:arrivalWeek ?arrivalWeek .
+}
+WHERE {
+  ?shipment a bg:Shipment ;
+            bg:weekNumber ?currentWeek ;
+            bg:shippedFrom ?actor .
+  
+  ?actor bg:shippingDelay ?delay .
+  
+  BIND(?currentWeek + ?delay AS ?arrivalWeek)
+  
+  FILTER NOT EXISTS {
+    ?shipment bg:arrivalWeek ?existingArrival .
+  }
+}
+
+#### RULE 9: ORDER-UP-TO POLICY (SUGGESTED ORDER) ####
+# Target inventory = demand * (lead time + review period)
+# Suggested order = target - current inventory (if positive)
+
+INSERT {
+  ?actor bg:suggestedOrderQuantity ?finalOrder .
+}
+WHERE {
+  ?actor a bg:Actor ;
+         bg:demandRate ?rate ;
+         bg:shippingDelay ?leadTime ;
+         bg:orderDelay ?reviewPeriod .
+  
+  ?inv a bg:Inventory ;
+       bg:currentInventory ?currentStock .
+  
+  # Calcular inventario objetivo
+  BIND(?leadTime + ?reviewPeriod AS ?totalDelay)
+  BIND(?rate * ?totalDelay AS ?targetStock)
+  
+  # Calcular orden sugerida
+  BIND(?targetStock - ?currentStock AS ?orderQty)
+  
+  # Solo sugerir si es positiva
+  BIND(IF(?orderQty > 0, ?orderQty, 0) AS ?finalOrder)
+  
+  FILTER NOT EXISTS {
+    ?actor bg:suggestedOrderQuantity ?existingSuggestion .
+  }
+}
+
+#### RULE 10: DEMAND RATE SMOOTHING (EXPONENTIAL SMOOTHING) ####
+# Smooth demand rate: newRate = alpha * currentDemand + (1-alpha) * oldRate
+# Alpha = 0.3 (30% weight to new observation)
+
+INSERT {
+  ?actor bg:demandRate ?smoothedRate .
+}
+WHERE {
+  ?actor a bg:Actor ;
+         bg:demandRate ?oldRate .
+  
+  ?demand a bg:CustomerDemand ;
+          bg:actualDemand ?currentDemand .
+  
+  # Exponential smoothing
+  BIND((?currentDemand * 0.3) + (?oldRate * 0.7) AS ?smoothedRate)
+  
+  # Solo actualizar si hay cambio significativo (> 5%)
+  BIND(ABS(?smoothedRate - ?oldRate) / ?oldRate AS ?changeRatio)
+  FILTER(?changeRatio > 0.05)
+}

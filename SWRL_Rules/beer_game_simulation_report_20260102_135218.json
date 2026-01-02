@@ -1,0 +1,90 @@
+{
+  "simulation": {
+    "name": "Beer Game Federated KG Simulation",
+    "description": "Supply chain simulation using federated knowledge graphs and SPARQL rules",
+    "version": "1.0.0"
+  },
+  "execution": {
+    "start_time": "2026-01-02T13:52:18.148009",
+    "end_time": "2026-01-02T13:53:07.045686",
+    "total_duration_seconds": 48.897677,
+    "total_weeks": 4,
+    "total_rules_executed": 176,
+    "total_rules_failed": 0,
+    "success_rate": 100.0
+  },
+  "configuration": {
+    "graphdb_url": "http://localhost:7200",
+    "repositories": [
+      "BG_Retailer",
+      "BG_Wholesaler",
+      "BG_Distributor",
+      "BG_Factory",
+      "BG_Supply_Chain"
+    ]
+  },
+  "weekly_results": [
+    {
+      "week": 1,
+      "executed_rules": 44,
+      "failed_rules": 0,
+      "duration_seconds": 10.89473,
+      "timestamp": "2026-01-02T13:52:29.042815",
+      "metrics": {
+        "total_actors": 8,
+        "bullwhip_risks": 0,
+        "stockout_risks": 0,
+        "total_cost": 180.0,
+        "avg_inventory_coverage": 0.4
+      }
+    },
+    {
+      "week": 2,
+      "executed_rules": 44,
+      "failed_rules": 0,
+      "duration_seconds": 10.293446,
+      "timestamp": "2026-01-02T13:52:41.412998",
+      "metrics": {
+        "total_actors": 8,
+        "bullwhip_risks": 0,
+        "stockout_risks": 0,
+        "total_cost": 180.0,
+        "avg_inventory_coverage": 0.4
+      }
+    },
+    {
+      "week": 3,
+      "executed_rules": 44,
+      "failed_rules": 0,
+      "duration_seconds": 10.509698,
+      "timestamp": "2026-01-02T13:52:53.978312",
+      "metrics": {
+        "total_actors": 8,
+        "bullwhip_risks": 0,
+        "stockout_risks": 0,
+        "total_cost": 180.0,
+        "avg_inventory_coverage": 0.4
+      }
+    },
+    {
+      "week": 4,
+      "executed_rules": 44,
+      "failed_rules": 0,
+      "duration_seconds": 10.95257,
+      "timestamp": "2026-01-02T13:53:06.977370",
+      "metrics": {
+        "total_actors": 8,
+        "bullwhip_risks": 0,
+        "stockout_risks": 0,
+        "total_cost": 180.0,
+        "avg_inventory_coverage": 0.4
+      }
+    }
+  ],
+  "summary_metrics": {
+    "peak_bullwhip_risks": 0,
+    "peak_stockout_risks": 0,
+    "total_supply_chain_cost": 720.0,
+    "avg_inventory_coverage": 0.4
+  }
+}

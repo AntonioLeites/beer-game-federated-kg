@@ -1,0 +1,98 @@
+# ============================================================
+# BEER GAME - WHOLESALER KNOWLEDGE GRAPH
+# Federated endpoint: http://localhost:7200/repositories/BeerGame_Wholesaler
+# ============================================================
+
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix bg: <http://beergame.org/ontology#> .
+@prefix bg_retailer: <http://beergame.org/retailer#> .
+@prefix bg_wholesaler: <http://beergame.org/wholesaler#> .
+@prefix bg_distributor: <http://beergame.org/distributor#> .
+
+#### WHOLESALER ACTOR ####
+
+bg_wholesaler:Wholesaler_Beta a bg:Wholesaler ;
+    rdfs:label "Wholesaler Beta" ;
+    bg:agentModel "Llama-4-Maverick-17B"^^xsd:string ;
+    bg:agentPrompt """You are the Wholesaler in a beer distribution game.
+You receive orders from the Retailer but CANNOT see end-customer demand directly.
+Query the Retailer's KG to access ACTUAL demand, not just their order quantity.
+Avoid amplifying the bullwhip effect."""^^xsd:string ;
+    bg:shippingDelay "2"^^xsd:integer ;  # 2 weeks to ship to retailer
+    bg:orderDelay "1"^^xsd:integer ;
+    bg:suppliesTo bg_retailer:Retailer_Alpha ;
+    bg:ordersFrom bg_distributor:Distributor_Gamma ;
+    bg:budgetConstraint "15000.00"^^xsd:decimal ;
+    bg:totalCost "0.00"^^xsd:decimal .
+
+#### CURRENT INVENTORY STATE (Week 1) ####
+
+bg_wholesaler:Inventory_Week1 a bg:Inventory ;
+    bg:weekNumber "1"^^xsd:integer ;
+    bg:currentInventory "12"^^xsd:integer ;
+    bg:backlog "0"^^xsd:integer ;
+    bg:incomingShipment "0"^^xsd:integer ;
+    bg:outgoingShipment "0"^^xsd:integer ;
+    bg:holdingCost "0.50"^^xsd:decimal ;
+    bg:backlogCost "1.00"^^xsd:decimal .
+
+#### INCOMING ORDER FROM RETAILER (Week 1) ####
+
+bg_wholesaler:ReceivedOrder_Week1 a bg:Order ;
+    bg:weekNumber "1"^^xsd:integer ;
+    bg:placedBy bg_retailer:Retailer_Alpha ;
+    bg:receivedBy bg_wholesaler:Wholesaler_Beta ;
+    bg:orderQuantity "4"^^xsd:integer ;
+    rdfs:comment "Retailer ordered 4 units" .
+
+#### WHOLESALER'S ORDER TO DISTRIBUTOR (Week 1) ####
+
+bg_wholesaler:Order_Week1 a bg:Order ;
+    bg:weekNumber "1"^^xsd:integer ;
+    bg:placedBy bg_wholesaler:Wholesaler_Beta ;
+    bg:receivedBy bg_distributor:Distributor_Gamma ;
+    bg:orderQuantity "4"^^xsd:integer ;  # Matches retailer's order (no amplification yet)
+    rdfs:comment "Conservative ordering strategy" .
+
+#### SHIPMENTS ####
+
+bg_wholesaler:Shipment_Week1_ToRetailer a bg:Shipment ;
+    bg:weekNumber "1"^^xsd:integer ;
+    bg:shippedFrom bg_wholesaler:Wholesaler_Beta ;
+    bg:shippedTo bg_retailer:Retailer_Alpha ;
+    bg:shippedQuantity "4"^^xsd:integer ;
+    bg:arrivalWeek "3"^^xsd:integer ;
+    rdfs:comment "Fulfilling retailer's order from 2 weeks ago" .
+
+bg_wholesaler:Shipment_Week1_FromDistributor a bg:Shipment ;
+    bg:weekNumber "1"^^xsd:integer ;
+    bg:shippedFrom bg_distributor:Distributor_Gamma ;
+    bg:shippedTo bg_wholesaler:Wholesaler_Beta ;
+    bg:shippedQuantity "4"^^xsd:integer ;
+    bg:arrivalWeek "3"^^xsd:integer ;
+    rdfs:comment "Incoming supply from distributor" .
+
+#### AGENT DECISION METRICS ####
+
+bg_wholesaler:Metrics_Week1 a bg:Actor ;
+    bg:demandRate "4.0"^^xsd:decimal ;  # Based on retailer's orders
+    bg:inventoryCoverage "3.0"^^xsd:decimal ;
+    bg:hasBullwhipRisk "false"^^xsd:boolean ;
+    bg:hasStockoutRisk "false"^^xsd:boolean .
+
+#### FEDERATED QUERY FOR REAL DEMAND ####
+
+# CRITICAL: Wholesaler should query Retailer's ACTUAL customer demand, not just orders
+
+# Query: What is the REAL end-customer demand?
+# SELECT ?realDemand WHERE {
+#   SERVICE <http://localhost:7200/repositories/BeerGame_Retailer> {
+#     ?demand a bg:CustomerDemand ;
+#             bg:weekNumber ?currentWeek ;
+#             bg:actualDemand ?realDemand .
+#   }
+# }
+
+# This prevents the wholesaler from blindly amplifying retailer's orders!

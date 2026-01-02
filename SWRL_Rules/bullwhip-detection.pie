@@ -1,0 +1,16 @@
+# bullwhip-detection.pie
+Id: bullwhip_detection
+
+  q: Order(?order)
+     orderQuantity(?order, ?qty)
+     weekNumber(?order, ?week)
+     placedBy(?order, ?actor)
+     CustomerDemand(?demand)
+     weekNumber(?demand, ?week)
+     actualDemand(?demand, ?realDemand)
+     greaterThan(?realDemand, 0)
+     divide(?ratio, ?qty, ?realDemand)
+     greaterThan(?ratio, 1.3)
+
+  s: hasBullwhipRisk(?actor, true)
+     orderAmplification(?order, ?ratio)

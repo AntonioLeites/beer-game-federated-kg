@@ -1,0 +1,30 @@
+# config.yaml
+repositories:
+  retailer: "http://localhost:7200/repositories/BG_Retailer"
+  wholesaler: "http://localhost:7200/repositories/BG_Whosaler"
+  distributor: "http://localhost:7200/repositories/BG_Distributor"
+  factory: "http://localhost:7200/repositories/BG_Factory"
+  federated: "http://localhost:7200/repositories/BG_Supply_Chain"
+
+simulation:
+  total_weeks: 52
+  rules_execution_interval: "weekly"  # or "daily", "real-time"
+  
+rules:
+  enabled:
+    - bullwhip_detection
+    - order_capping
+    - stockout_risk
+    - inventory_coverage
+    - budget_adjustment
+    - cost_calculation
+    - shipment_arrival
+    - order_policy
+    - demand_smoothing
+  
+  disabled:
+    - experimental_rules
+  
+logging:
+  level: "INFO"
+  file: "beer-game-simulation.log"
