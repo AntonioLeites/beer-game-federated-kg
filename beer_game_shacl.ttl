@@ -289,3 +289,97 @@ bg:CostCalculationShape a sh:NodeShape ;
             }
         """ ;
     ] .
+
+#### ActorMetrics must have exactly one Week.
+
+bg:ActorMetricsShape a sh:NodeShape ;
+    sh:targetClass bg:ActorMetrics ;
+
+    sh:property [
+        sh:path bg:forWeek ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:class bg:Week ;
+        sh:message "ActorMetrics must be associated with exactly one bg:Week." ;
+    ] .
+
+#### ActorMetrics must be connected to an Actor.
+
+bg:ActorHasMetricsShape a sh:NodeShape ;
+    sh:targetClass bg:Actor ;
+
+    sh:property [
+        sh:path bg:hasMetrics ;
+        sh:minCount 1 ;
+        sh:class bg:ActorMetrics ;
+        sh:message "Each Actor must have at least one ActorMetrics snapshot." ;
+    ] .
+
+#### An Actor cannot have two metrics for the same Week.
+
+bg:UniqueMetricsPerWeekShape a sh:NodeShape ;
+    sh:targetClass bg:Actor ;
+
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "An Actor cannot have more than one ActorMetrics for the same Week." ;
+        sh:select """
+        SELECT $this
+        WHERE {
+            $this bg:hasMetrics ?m1, ?m2 .
+            ?m1 bg:forWeek ?w .
+            ?m2 bg:forWeek ?w .
+            FILTER (?m1 != ?m2)
+        }
+        """ ;
+    ] .
+
+#### Metrics should NOT hang directly on the Actor.
+
+bg:NoDirectMetricsOnActorShape a sh:NodeShape ;
+    sh:targetClass bg:Actor ;
+
+    sh:property [
+        sh:path bg:inventoryCoverage ;
+        sh:maxCount 0 ;
+        sh:message "inventoryCoverage must be attached to ActorMetrics, not directly to Actor." ;
+    ] ;
+    sh:property [
+        sh:path bg:demandRate ;
+        sh:maxCount 0 ;
+        sh:message "demandRate must be attached to ActorMetrics, not directly to Actor." ;
+    ] ;
+    sh:property [
+        sh:path bg:hasBullwhipRisk ;
+        sh:maxCount 0 ;
+        sh:message "Risk flags must be attached to ActorMetrics, not directly to Actor." ;
+    ] .
+
+
+#### A Week cannot sign itself up.
+
+bg:WeekNoSelfLoopShape a sh:NodeShape ;
+    sh:targetClass bg:Week ;
+
+    sh:sparql [
+        a sh:SPARQLConstraint ;
+        sh:message "A Week cannot be its own previousWeek." ;
+        sh:select """
+        SELECT $this
+        WHERE {
+            $this bg:previousWeek $this .
+        }
+        """ ;
+    ] .
+
+#### A Week has at most one previousWeek.
+
+bg:WeekPreviousUniquenessShape a sh:NodeShape ;
+    sh:targetClass bg:Week ;
+
+    sh:property [
+        sh:path bg:previousWeek ;
+        sh:maxCount 1 ;
+        sh:class bg:Week ;
+        sh:message "A Week can have at most one previousWeek." ;
+    ] .
