@@ -1,5 +1,5 @@
 # ============================================================
-# BEER GAME - FACTORY KNOWLEDGE GRAPH
+# BEER GAME - FACTORY KNOWLEDGE GRAPH (TEMPORAL VERSION)
 # Federated endpoint: http://localhost:7200/repositories/BeerGame_Factory
 # ============================================================
 
@@ -10,7 +10,17 @@
 @prefix bg_distributor: <http://beergame.org/distributor#> .
 @prefix bg_factory: <http://beergame.org/factory#> .
 
-#### FACTORY ACTOR ####
+# ============================================================
+# TIME DIMENSION
+# ============================================================
+
+bg:Week_1 a bg:Week ;
+    bg:weekNumber "1"^^xsd:integer ;
+    rdfs:label "Week 1" .
+
+# ============================================================
+# FACTORY ACTOR (STATIC IDENTITY)
+# ============================================================
 
 bg_factory:Factory_Delta a bg:Factory ;
     rdfs:label "Factory Delta" ;
@@ -23,90 +33,83 @@ Smooth production to avoid bullwhip amplification."""^^xsd:string ;
     bg:shippingDelay "2"^^xsd:integer ;
     bg:orderDelay "1"^^xsd:integer ;
     bg:suppliesTo bg_distributor:Distributor_Gamma ;
-    bg:budgetConstraint "50000.00"^^xsd:decimal ;  # Higher capacity
+    bg:budgetConstraint "50000.00"^^xsd:decimal ;
     bg:totalCost "0.00"^^xsd:decimal .
 
-#### PRODUCTION CAPACITY ####
+# ============================================================
+# PRODUCTION CAPACITY
+# ============================================================
 
 bg_factory:ProductionCapacity a bg:ProductionLine ;
-    bg:maxProductionRate "100"^^xsd:integer ;  # Can produce up to 100 units/week
-    bg:currentProductionRate "4"^^xsd:integer ;  # Currently producing 4/week
+    bg:maxProductionRate "100"^^xsd:integer ;
+    bg:currentProductionRate "4"^^xsd:integer ;
     rdfs:label "Beer Production Line" .
 
-#### CURRENT INVENTORY STATE (Week 1) ####
+# ============================================================
+# INVENTORY STATE (WEEK 1)
+# ============================================================
 
 bg_factory:Inventory_Week1 a bg:Inventory ;
-    bg:weekNumber "1"^^xsd:integer ;
+    bg:forWeek bg:Week_1 ;
     bg:currentInventory "12"^^xsd:integer ;
     bg:backlog "0"^^xsd:integer ;
-    bg:incomingShipment "0"^^xsd:integer ;  # Factory produces, doesn't receive
+    bg:incomingShipment "0"^^xsd:integer ;
     bg:outgoingShipment "0"^^xsd:integer ;
     bg:holdingCost "0.50"^^xsd:decimal ;
     bg:backlogCost "1.00"^^xsd:decimal .
 
-#### INCOMING ORDER FROM DISTRIBUTOR (Week 1) ####
+# ============================================================
+# INCOMING ORDER FROM DISTRIBUTOR (WEEK 1)
+# ============================================================
 
 bg_factory:ReceivedOrder_Week1 a bg:Order ;
-    bg:weekNumber "1"^^xsd:integer ;
+    bg:forWeek bg:Week_1 ;
     bg:placedBy bg_distributor:Distributor_Gamma ;
     bg:receivedBy bg_factory:Factory_Delta ;
     bg:orderQuantity "4"^^xsd:integer .
 
-#### PRODUCTION DECISION (Week 1) ####
+# ============================================================
+# PRODUCTION DECISION (WEEK 1)
+# ============================================================
 
 bg_factory:ProductionOrder_Week1 a bg:ProductionOrder ;
-    bg:weekNumber "1"^^xsd:integer ;
+    bg:forWeek bg:Week_1 ;
     bg:producedQuantity "4"^^xsd:integer ;
-    bg:completionWeek "2"^^xsd:integer ;  # Production takes 1 week
+    bg:completionWeek "2"^^xsd:integer ;
     rdfs:comment "Produce to match current demand" .
 
-#### SHIPMENT TO DISTRIBUTOR ####
+# ============================================================
+# SHIPMENT TO DISTRIBUTOR
+# ============================================================
 
 bg_factory:Shipment_Week1 a bg:Shipment ;
-    bg:weekNumber "1"^^xsd:integer ;
+    bg:forWeek bg:Week_1 ;
     bg:shippedFrom bg_factory:Factory_Delta ;
     bg:shippedTo bg_distributor:Distributor_Gamma ;
     bg:shippedQuantity "4"^^xsd:integer ;
     bg:arrivalWeek "3"^^xsd:integer .
 
-#### AGENT DECISION METRICS ####
+# ============================================================
+# ACTOR METRICS (WEEK 1 SNAPSHOT)
+# ============================================================
 
-bg_factory:Metrics_Week1 a bg:Actor ;
+bg_factory:Metrics_Week1 a bg:ActorMetrics ;
+    bg:forWeek bg:Week_1 ;
     bg:demandRate "4.0"^^xsd:decimal ;
     bg:inventoryCoverage "3.0"^^xsd:decimal ;
     bg:hasBullwhipRisk "false"^^xsd:boolean ;
     bg:hasStockoutRisk "false"^^xsd:boolean .
 
-#### RAW MATERIALS (Factory-Specific) ####
+bg_factory:Factory_Delta
+    bg:hasMetrics bg_factory:Metrics_Week1 .
+
+# ============================================================
+# RAW MATERIALS (FACTORY-SPECIFIC)
+# ============================================================
 
 bg_factory:RawMaterials_Week1 a bg:RawMaterials ;
+    bg:forWeek bg:Week_1 ;
     bg:hopsInventory "500"^^xsd:integer ;
     bg:maltInventory "800"^^xsd:integer ;
     bg:yeastInventory "200"^^xsd:integer ;
     rdfs:comment "Sufficient materials for 100+ weeks" .
-
-#### FEDERATED QUERY FOR TOTAL SUPPLY CHAIN VISIBILITY ####
-
-# Query: Aggregate demand across entire supply chain
-# SELECT (SUM(?demand) as ?totalDemand)
-# WHERE {
-#   {
-#     SERVICE <http://localhost:7200/repositories/BeerGame_Retailer> {
-#       ?d a bg:CustomerDemand ; bg:actualDemand ?demand .
-#     }
-#   }
-#   UNION
-#   {
-#     SERVICE <http://localhost:7200/repositories/BeerGame_Wholesaler> {
-#       ?o bg:orderQuantity ?demand .
-#     }
-#   }
-#   UNION
-#   {
-#     SERVICE <http://localhost:7200/repositories/BeerGame_Distributor> {
-#       ?o bg:orderQuantity ?demand .
-#     }
-#   }
-# }
-
-# Factory can see TOTAL pipeline demand to optimize production scheduling

@@ -1,5 +1,5 @@
 # ============================================================
-# BEER GAME - RETAILER KNOWLEDGE GRAPH
+# BEER GAME - RETAILER KNOWLEDGE GRAPH (TEMPORAL VERSION)
 # Federated endpoint: http://localhost:7200/repositories/BeerGame_Retailer
 # ============================================================
 
@@ -10,90 +10,95 @@
 @prefix bg_retailer: <http://beergame.org/retailer#> .
 @prefix bg_wholesaler: <http://beergame.org/wholesaler#> .
 
-#### RETAILER ACTOR ####
+# ============================================================
+# TIME DIMENSION
+# ============================================================
+
+bg:Week_1 a bg:Week ;
+    bg:weekNumber "1"^^xsd:integer ;
+    rdfs:label "Week 1" .
+
+# ============================================================
+# RETAILER ACTOR (STATIC IDENTITY)
+# ============================================================
 
 bg_retailer:Retailer_Alpha a bg:Retailer ;
     rdfs:label "Retailer Alpha" ;
     bg:agentModel "GPT-5"^^xsd:string ;
-    bg:agentPrompt """You are the Retailer in a beer distribution game. 
+    bg:agentPrompt """You are the Retailer in a beer distribution game.
 Your goal: Minimize total costs (holding + backlog).
 Current week data and federated queries are provided.
 Make ordering decisions based on actual customer demand, not panic."""^^xsd:string ;
-    bg:shippingDelay "2"^^xsd:integer ;  # 2 weeks for beer to arrive from wholesaler
-    bg:orderDelay "1"^^xsd:integer ;     # 1 week for wholesaler to process order
+    bg:shippingDelay "2"^^xsd:integer ;
+    bg:orderDelay "1"^^xsd:integer ;
     bg:ordersFrom bg_wholesaler:Wholesaler_Beta ;
     bg:budgetConstraint "10000.00"^^xsd:decimal ;
     bg:totalCost "0.00"^^xsd:decimal .
 
-#### CURRENT INVENTORY STATE (Week 1) ####
+# ============================================================
+# INVENTORY STATE (WEEK 1)
+# ============================================================
 
 bg_retailer:Inventory_Week1 a bg:Inventory ;
-    bg:weekNumber "1"^^xsd:integer ;
-    bg:currentInventory "12"^^xsd:integer ;  # Starting inventory (standard in Beer Game)
+    bg:forWeek bg:Week_1 ;
+    bg:currentInventory "12"^^xsd:integer ;     # Initial Beer Game inventory
     bg:backlog "0"^^xsd:integer ;
-    bg:incomingShipment "0"^^xsd:integer ;  # No shipments arriving yet
+    bg:incomingShipment "0"^^xsd:integer ;
     bg:outgoingShipment "0"^^xsd:integer ;
-    bg:holdingCost "0.50"^^xsd:decimal ;  # $0.50 per unit per week
-    bg:backlogCost "1.00"^^xsd:decimal .  # $1.00 per unit per week
+    bg:holdingCost "0.50"^^xsd:decimal ;
+    bg:backlogCost "1.00"^^xsd:decimal .
 
-#### CUSTOMER DEMAND (Week 1) ####
+# ============================================================
+# CUSTOMER DEMAND (WEEK 1)
+# ============================================================
 
 bg_retailer:Demand_Week1 a bg:CustomerDemand ;
-    bg:weekNumber "1"^^xsd:integer ;
-    bg:actualDemand "4"^^xsd:integer ;  # End customers want 4 cases of beer
+    bg:forWeek bg:Week_1 ;
+    bg:actualDemand "4"^^xsd:integer ;
     rdfs:comment "Initial steady demand from end customers" .
 
-#### RETAILER'S ORDER TO WHOLESALER (Week 1) ####
+# ============================================================
+# RETAILER ORDER (WEEK 1)
+# ============================================================
 
 bg_retailer:Order_Week1 a bg:Order ;
-    bg:weekNumber "1"^^xsd:integer ;
+    bg:forWeek bg:Week_1 ;
     bg:placedBy bg_retailer:Retailer_Alpha ;
     bg:receivedBy bg_wholesaler:Wholesaler_Beta ;
-    bg:orderQuantity "4"^^xsd:integer ;  # Retailer orders 4 to match demand
+    bg:orderQuantity "4"^^xsd:integer ;
     rdfs:comment "Initial order matches customer demand" .
 
-#### SHIPMENTS IN PIPELINE (Week 1) ####
+# ============================================================
+# SHIPMENTS IN PIPELINE
+# ============================================================
 
 bg_retailer:Shipment_Week1_Arriving3 a bg:Shipment ;
-    bg:weekNumber "1"^^xsd:integer ;
     bg:shippedFrom bg_wholesaler:Wholesaler_Beta ;
     bg:shippedTo bg_retailer:Retailer_Alpha ;
     bg:shippedQuantity "4"^^xsd:integer ;
-    bg:arrivalWeek "3"^^xsd:integer ;  # Will arrive in week 3 (2-week delay)
-    rdfs:comment "Previous order from wholesaler, arriving in 2 weeks" .
+    bg:arrivalWeek "3"^^xsd:integer ;
+    rdfs:comment "Shipment in transit from wholesaler (2-week delay)" .
 
-#### AGENT DECISION METRICS ####
+# ============================================================
+# ACTOR METRICS (WEEK 1 SNAPSHOT)
+# ============================================================
 
-bg_retailer:Metrics_Week1 a bg:Actor ;
-    bg:demandRate "4.0"^^xsd:decimal ;  # Current demand rate
-    bg:inventoryCoverage "3.0"^^xsd:decimal ;  # 12 units / 4 demand = 3 weeks coverage
+bg_retailer:Metrics_Week1 a bg:ActorMetrics ;
+    bg:forWeek bg:Week_1 ;
+    bg:demandRate "4.0"^^xsd:decimal ;
+    bg:inventoryCoverage "3.0"^^xsd:decimal ;   # 12 / 4 = 3 weeks
     bg:hasBullwhipRisk "false"^^xsd:boolean ;
     bg:hasStockoutRisk "false"^^xsd:boolean .
 
-#### RETAILER-SPECIFIC INTERNAL DATA ####
+bg_retailer:Retailer_Alpha
+    bg:hasMetrics bg_retailer:Metrics_Week1 .
 
-# Private data (NOT shared via federation)
+# ============================================================
+# RETAILER INTERNAL (PRIVATE, NON-FEDERATED)
+# ============================================================
+
 bg_retailer:InternalData_Week1 a bg:InternalMetrics ;
-    bg:retailMargin "0.25"^^xsd:decimal ;  # 25% markup
+    bg:forWeek bg:Week_1 ;
+    bg:retailMargin "0.25"^^xsd:decimal ;
     bg:customerSatisfactionScore "95"^^xsd:integer ;
     bg:internalNotes "Week 1: Normal operations, conservative ordering"^^xsd:string .
-
-#### FEDERATED QUERY EXAMPLES (for AI agent) ####
-
-# The Retailer agent will execute these queries to get upstream data:
-
-# Query 1: Get wholesaler's lead time
-# SELECT ?leadTime WHERE {
-#   SERVICE <http://localhost:7200/repositories/BG_Whosaler> {
-#     bg_wholesaler:Wholesaler_Beta bg:shippingDelay ?leadTime .
-#   }
-# }
-
-# Query 2: Check if shipment is delayed
-# SELECT ?status WHERE {
-#   SERVICE <http://localhost:7200/repositories/BG_Whosaler> {
-#     ?shipment bg:shippedTo bg_retailer:Retailer_Alpha ;
-#               bg:arrivalWeek ?week ;
-#               bg:trackingStatus ?status .
-#   }
-# }

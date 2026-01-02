@@ -1,5 +1,5 @@
 # ============================================================
-# BEER GAME - DISTRIBUTOR KNOWLEDGE GRAPH
+# BEER GAME - DISTRIBUTOR KNOWLEDGE GRAPH (TEMPORAL VERSION)
 # Federated endpoint: http://localhost:7200/repositories/BeerGame_Distributor
 # ============================================================
 
@@ -11,7 +11,17 @@
 @prefix bg_distributor: <http://beergame.org/distributor#> .
 @prefix bg_factory: <http://beergame.org/factory#> .
 
-#### DISTRIBUTOR ACTOR ####
+# ============================================================
+# TIME DIMENSION
+# ============================================================
+
+bg:Week_1 a bg:Week ;
+    bg:weekNumber "1"^^xsd:integer ;
+    rdfs:label "Week 1" .
+
+# ============================================================
+# DISTRIBUTOR ACTOR (STATIC IDENTITY)
+# ============================================================
 
 bg_distributor:Distributor_Gamma a bg:Distributor ;
     rdfs:label "Distributor Gamma" ;
@@ -27,10 +37,12 @@ Apply SWRL rules to detect bullwhip amplification early."""^^xsd:string ;
     bg:budgetConstraint "20000.00"^^xsd:decimal ;
     bg:totalCost "0.00"^^xsd:decimal .
 
-#### CURRENT INVENTORY STATE (Week 1) ####
+# ============================================================
+# INVENTORY STATE (WEEK 1)
+# ============================================================
 
 bg_distributor:Inventory_Week1 a bg:Inventory ;
-    bg:weekNumber "1"^^xsd:integer ;
+    bg:forWeek bg:Week_1 ;
     bg:currentInventory "12"^^xsd:integer ;
     bg:backlog "0"^^xsd:integer ;
     bg:incomingShipment "0"^^xsd:integer ;
@@ -38,61 +50,65 @@ bg_distributor:Inventory_Week1 a bg:Inventory ;
     bg:holdingCost "0.50"^^xsd:decimal ;
     bg:backlogCost "1.00"^^xsd:decimal .
 
-#### INCOMING ORDER FROM WHOLESALER (Week 1) ####
+# ============================================================
+# INCOMING ORDER FROM WHOLESALER (WEEK 1)
+# ============================================================
 
 bg_distributor:ReceivedOrder_Week1 a bg:Order ;
-    bg:weekNumber "1"^^xsd:integer ;
+    bg:forWeek bg:Week_1 ;
     bg:placedBy bg_wholesaler:Wholesaler_Beta ;
     bg:receivedBy bg_distributor:Distributor_Gamma ;
     bg:orderQuantity "4"^^xsd:integer .
 
-#### DISTRIBUTOR'S ORDER TO FACTORY (Week 1) ####
+# ============================================================
+# DISTRIBUTOR ORDER TO FACTORY (WEEK 1)
+# ============================================================
 
 bg_distributor:Order_Week1 a bg:Order ;
-    bg:weekNumber "1"^^xsd:integer ;
+    bg:forWeek bg:Week_1 ;
     bg:placedBy bg_distributor:Distributor_Gamma ;
     bg:receivedBy bg_factory:Factory_Delta ;
     bg:orderQuantity "4"^^xsd:integer ;
     rdfs:comment "Maintaining stability in the supply chain" .
 
-#### SHIPMENTS ####
+# ============================================================
+# SHIPMENTS
+# ============================================================
 
 bg_distributor:Shipment_Week1_ToWholesaler a bg:Shipment ;
-    bg:weekNumber "1"^^xsd:integer ;
+    bg:forWeek bg:Week_1 ;
     bg:shippedFrom bg_distributor:Distributor_Gamma ;
     bg:shippedTo bg_wholesaler:Wholesaler_Beta ;
     bg:shippedQuantity "4"^^xsd:integer ;
     bg:arrivalWeek "3"^^xsd:integer .
 
 bg_distributor:Shipment_Week1_FromFactory a bg:Shipment ;
-    bg:weekNumber "1"^^xsd:integer ;
+    bg:forWeek bg:Week_1 ;
     bg:shippedFrom bg_factory:Factory_Delta ;
     bg:shippedTo bg_distributor:Distributor_Gamma ;
     bg:shippedQuantity "4"^^xsd:integer ;
     bg:arrivalWeek "3"^^xsd:integer .
 
-#### AGENT DECISION METRICS ####
+# ============================================================
+# ACTOR METRICS (WEEK 1 SNAPSHOT)
+# ============================================================
 
-bg_distributor:Metrics_Week1 a bg:Actor ;
+bg_distributor:Metrics_Week1 a bg:ActorMetrics ;
+    bg:forWeek bg:Week_1 ;
     bg:demandRate "4.0"^^xsd:decimal ;
     bg:inventoryCoverage "3.0"^^xsd:decimal ;
     bg:hasBullwhipRisk "false"^^xsd:boolean ;
     bg:hasStockoutRisk "false"^^xsd:boolean .
 
-#### FEDERATED QUERY TO DETECT BULLWHIP ####
+bg_distributor:Distributor_Gamma
+    bg:hasMetrics bg_distributor:Metrics_Week1 .
 
-# Query: Compare wholesaler's order to actual end-customer demand
-# SELECT ?wholesalerOrder ?realDemand (?wholesalerOrder / ?realDemand as ?amplification)
-# WHERE {
-#   ?order bg:placedBy bg_wholesaler:Wholesaler_Beta ;
-#          bg:orderQuantity ?wholesalerOrder ;
-#          bg:weekNumber ?week .
-#   
-#   SERVICE <http://localhost:7200/repositories/BeerGame_Retailer> {
-#     ?demand a bg:CustomerDemand ;
-#             bg:weekNumber ?week ;
-#             bg:actualDemand ?realDemand .
-#   }
-# }
+# ============================================================
+# DISTRIBUTOR INTERNAL (PRIVATE, NON-FEDERATED)
+# ============================================================
 
-# If amplification > 1.3, apply SWRL rule to cap distributor's order
+bg_distributor:InternalData_Week1 a bg:InternalMetrics ;
+    bg:forWeek bg:Week_1 ;
+    bg:distributorMargin "0.10"^^xsd:decimal ;
+    bg:customerSatisfactionScore "97"^^xsd:integer ;
+    bg:internalNotes "Week 1: Normal operations, no stockouts, stable ordering"^^xsd:string .
