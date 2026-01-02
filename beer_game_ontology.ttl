@@ -271,6 +271,40 @@ bg:defaultOrderDelay a owl:DatatypeProperty ;
     rdfs:range xsd:integer ;
     owl:equivalentProperty [ rdf:value "1"^^xsd:integer ] .
 
+#### TEMPORAL MODEL EXTENSION ####
+
+### Time dimension ###
+
+bg:Week a owl:Class ;
+    rdfs:label "Week" ;
+    rdfs:comment "Discrete time period in the supply chain simulation" .
+
+bg:previousWeek a owl:ObjectProperty ;
+    rdfs:domain bg:Week ;
+    rdfs:range bg:Week ;
+    rdfs:label "previous week" ;
+    rdfs:comment "Links a week to its immediate predecessor" .
+
+### Actor temporal state ###
+
+bg:ActorMetrics a owl:Class ;
+    rdfs:label "Actor Metrics" ;
+    rdfs:comment "State of an actor at a specific week" .
+
+bg:hasMetrics a owl:ObjectProperty ;
+    rdfs:domain bg:Actor ;
+    rdfs:range bg:ActorMetrics ;
+    rdfs:label "has metrics" ;
+    rdfs:comment "Links an actor to its metrics snapshot" .
+
+bg:forWeek a owl:ObjectProperty ;
+    rdfs:domain bg:ActorMetrics ;
+    rdfs:range bg:Week ;
+    rdfs:label "for week" ;
+    rdfs:comment "Associates metrics with a specific week" .
+
+
+
 #### SWRL RULES (Import Separately) ####
 
 # SWRL rules are defined in a separate file: beer-game-swrl-rules.ttl
