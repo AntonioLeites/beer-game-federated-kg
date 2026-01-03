@@ -43,6 +43,7 @@ Avoid amplifying the bullwhip effect."""^^xsd:string ;
 
 bg_wholesaler:Inventory_Week1 a bg:Inventory ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_wholesaler:Wholesaler_Beta ;
     bg:currentInventory "12"^^xsd:integer ;
     bg:backlog "0"^^xsd:integer ;
     bg:incomingShipment "0"^^xsd:integer ;
@@ -67,6 +68,7 @@ bg_wholesaler:ReceivedOrder_Week1 a bg:Order ;
 
 bg_wholesaler:Order_Week1 a bg:Order ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_wholesaler:Wholesaler_Beta ;
     bg:placedBy bg_wholesaler:Wholesaler_Beta ;
     bg:receivedBy bg_distributor:Distributor_Gamma ;
     bg:orderQuantity "4"^^xsd:integer ;
@@ -78,6 +80,7 @@ bg_wholesaler:Order_Week1 a bg:Order ;
 
 bg_wholesaler:Shipment_Week1_ToRetailer a bg:Shipment ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_wholesaler:Wholesaler_Beta ;
     bg:shippedFrom bg_wholesaler:Wholesaler_Beta ;
     bg:shippedTo bg_retailer:Retailer_Alpha ;
     bg:shippedQuantity "4"^^xsd:integer ;
@@ -86,6 +89,7 @@ bg_wholesaler:Shipment_Week1_ToRetailer a bg:Shipment ;
 
 bg_wholesaler:Shipment_Week1_FromDistributor a bg:Shipment ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_wholesaler:Wholesaler_Beta ;
     bg:shippedFrom bg_distributor:Distributor_Gamma ;
     bg:shippedTo bg_wholesaler:Wholesaler_Beta ;
     bg:shippedQuantity "4"^^xsd:integer ;
@@ -98,6 +102,7 @@ bg_wholesaler:Shipment_Week1_FromDistributor a bg:Shipment ;
 
 bg_wholesaler:Metrics_Week1 a bg:ActorMetrics ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_wholesaler:Wholesaler_Beta ;
     bg:demandRate "4.0"^^xsd:decimal ;
     bg:inventoryCoverage "3.0"^^xsd:decimal ;
     bg:hasBullwhipRisk "false"^^xsd:boolean ;
@@ -112,6 +117,7 @@ bg_wholesaler:Wholesaler_Beta
 
 bg_wholesaler:InternalData_Week1 a bg:InternalMetrics ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_wholesaler:Wholesaler_Beta ;
     bg:wholesaleMargin "0.15"^^xsd:decimal ;
     bg:customerSatisfactionScore "98"^^xsd:integer ;
     bg:internalNotes "Week 1: Normal operations, no stockouts, conservative ordering"^^xsd:string .

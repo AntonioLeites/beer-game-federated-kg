@@ -41,6 +41,7 @@ Make ordering decisions based on actual customer demand, not panic."""^^xsd:stri
 
 bg_retailer:Inventory_Week1 a bg:Inventory ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_retailer:Retailer_Alpha ;
     bg:currentInventory "12"^^xsd:integer ;     # Initial Beer Game inventory
     bg:backlog "0"^^xsd:integer ;
     bg:incomingShipment "0"^^xsd:integer ;
@@ -54,6 +55,7 @@ bg_retailer:Inventory_Week1 a bg:Inventory ;
 
 bg_retailer:Demand_Week1 a bg:CustomerDemand ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_retailer:Retailer_Alpha ;
     bg:actualDemand "4"^^xsd:integer ;
     rdfs:comment "Initial steady demand from end customers" .
 
@@ -63,6 +65,7 @@ bg_retailer:Demand_Week1 a bg:CustomerDemand ;
 
 bg_retailer:Order_Week1 a bg:Order ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_retailer:Retailer_Alpha ;
     bg:placedBy bg_retailer:Retailer_Alpha ;
     bg:receivedBy bg_wholesaler:Wholesaler_Beta ;
     bg:orderQuantity "4"^^xsd:integer ;
@@ -73,6 +76,8 @@ bg_retailer:Order_Week1 a bg:Order ;
 # ============================================================
 
 bg_retailer:Shipment_Week1_Arriving3 a bg:Shipment ;
+    bg:forWeek bg:Week_1 ;            #Fix to convert shipment to week-based
+    bg:belongsTo bg_retailer:Retailer_Alpha ;
     bg:shippedFrom bg_wholesaler:Wholesaler_Beta ;
     bg:shippedTo bg_retailer:Retailer_Alpha ;
     bg:shippedQuantity "4"^^xsd:integer ;
@@ -85,6 +90,7 @@ bg_retailer:Shipment_Week1_Arriving3 a bg:Shipment ;
 
 bg_retailer:Metrics_Week1 a bg:ActorMetrics ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_retailer:Retailer_Alpha ;
     bg:demandRate "4.0"^^xsd:decimal ;
     bg:inventoryCoverage "3.0"^^xsd:decimal ;   # 12 / 4 = 3 weeks
     bg:hasBullwhipRisk "false"^^xsd:boolean ;
@@ -99,6 +105,7 @@ bg_retailer:Retailer_Alpha
 
 bg_retailer:InternalData_Week1 a bg:InternalMetrics ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_retailer:Retailer_Alpha ;
     bg:retailMargin "0.25"^^xsd:decimal ;
     bg:customerSatisfactionScore "95"^^xsd:integer ;
     bg:internalNotes "Week 1: Normal operations, conservative ordering"^^xsd:string .

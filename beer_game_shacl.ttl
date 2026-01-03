@@ -1,5 +1,5 @@
 # ============================================================
-# BEER GAME - SHACL VALIDATION RULES
+# BEER GAME - SHACL VALIDATION RULES (CLEANED)
 # Validates data integrity across federated KGs
 # ============================================================
 
@@ -16,12 +16,12 @@ bg:OrderShape a sh:NodeShape ;
     sh:property [
         sh:path bg:orderQuantity ;
         sh:datatype xsd:integer ;
-        sh:minInclusive 0 ;  # Cannot order negative quantities
+        sh:minInclusive 0 ;
         sh:maxCount 1 ;
         sh:message "Order quantity must be a non-negative integer" ;
     ] ;
     sh:property [
-        sh:path bg:weekNumber ;
+        sh:path bg:forWeek ;
         sh:datatype xsd:integer ;
         sh:minInclusive 1 ;
         sh:maxCount 1 ;
@@ -105,14 +105,12 @@ bg:ShipmentShape a sh:NodeShape ;
         sh:minCount 1 ;
         sh:maxCount 1 ;
     ] ;
-    # Validate that arrival week > shipment week
     sh:sparql [
         sh:message "Arrival week must be greater than shipment week" ;
         sh:select """
-            PREFIX bg: <http://beergame.org/ontology#>
             SELECT $this ?shipWeek ?arrivalWeek
             WHERE {
-                $this bg:weekNumber ?shipWeek ;
+                $this bg:forWeek ?shipWeek ;
                       bg:arrivalWeek ?arrivalWeek .
                 FILTER (?arrivalWeek <= ?shipWeek)
             }
@@ -126,13 +124,11 @@ bg:BudgetConstraintShape a sh:NodeShape ;
     sh:sparql [
         sh:message "Order exceeds budget constraint" ;
         sh:select """
-            PREFIX bg: <http://beergame.org/ontology#>
             SELECT $this ?orderQty ?budget
             WHERE {
                 $this bg:orderQuantity ?orderQty ;
                       bg:placedBy ?actor .
                 ?actor bg:budgetConstraint ?budget .
-                # Assume $1 per unit cost for simplicity
                 FILTER (?orderQty > ?budget)
             }
         """ ;
@@ -145,7 +141,6 @@ bg:MaxOrderShape a sh:NodeShape ;
     sh:sparql [
         sh:message "Order quantity exceeds dynamic guardrail (max order)" ;
         sh:select """
-            PREFIX bg: <http://beergame.org/ontology#>
             SELECT $this ?orderQty ?maxOrder
             WHERE {
                 $this bg:orderQuantity ?orderQty ;
@@ -163,19 +158,17 @@ bg:OrderShipmentConsistencyShape a sh:NodeShape ;
     sh:sparql [
         sh:message "Order has no corresponding shipment after processing delay" ;
         sh:select """
-            PREFIX bg: <http://beergame.org/ontology#>
             SELECT $this ?orderWeek ?processingWeek
             WHERE {
-                $this bg:weekNumber ?orderWeek ;
+                $this bg:forWeek ?orderWeek ;
                       bg:receivedBy ?recipient .
                 ?recipient bg:orderDelay ?delay .
                 BIND(?orderWeek + ?delay AS ?processingWeek)
                 
-                # Check that a shipment exists for this order
                 FILTER NOT EXISTS {
                     ?shipment a bg:Shipment ;
                               bg:shippedFrom ?recipient ;
-                              bg:weekNumber ?processingWeek .
+                              bg:forWeek ?processingWeek .
                 }
             }
         """ ;
@@ -188,55 +181,48 @@ bg:DemandPropagationShape a sh:NodeShape ;
     sh:sparql [
         sh:message "Wholesaler's demand rate should match retailer's actual demand" ;
         sh:select """
-            PREFIX bg: <http://beergame.org/ontology#>
-            PREFIX bg_retailer: <http://beergame.org/retailer#>
             PREFIX bg_wholesaler: <http://beergame.org/wholesaler#>
+            PREFIX bg_retailer: <http://beergame.org/retailer#>
             SELECT ?realDemand ?wholesalerDemand
             WHERE {
-                # Query Retailer KG for actual demand
                 ?demand a bg:CustomerDemand ;
                         bg:actualDemand ?realDemand .
                 
-                # Query Wholesaler KG for their demand rate
                 SERVICE <http://localhost:7200/repositories/BeerGame_Wholesaler> {
                     bg_wholesaler:Wholesaler_Beta bg:demandRate ?wholesalerDemand .
                 }
                 
-                # Validate they match (allowing 10% tolerance)
                 FILTER (ABS(?wholesalerDemand - ?realDemand) / ?realDemand > 0.1)
             }
         """ ;
     ] .
 
-#### BULLWHIP EFFECT DETECTION (Validation) ####
+#### BULLWHIP EFFECT DETECTION ####
 
 bg:BullwhipDetectionShape a sh:NodeShape ;
     sh:targetClass bg:Order ;
     sh:sparql [
         sh:message "ALERT: Order amplification detected (bullwhip effect)" ;
-        sh:severity sh:Warning ;  # Warning, not error
+        sh:severity sh:Warning ;
         sh:select """
-            PREFIX bg: <http://beergame.org/ontology#>
             PREFIX bg_retailer: <http://beergame.org/retailer#>
             SELECT $this ?orderQty ?realDemand (?orderQty / ?realDemand as ?amplification)
             WHERE {
                 $this bg:orderQuantity ?orderQty ;
-                      bg:weekNumber ?week .
+                      bg:forWeek ?week .
                 
-                # Federated query to get actual demand
                 SERVICE <http://localhost:7200/repositories/BeerGame_Retailer> {
                     ?demand a bg:CustomerDemand ;
-                            bg:weekNumber ?week ;
+                            bg:forWeek ?week ;
                             bg:actualDemand ?realDemand .
                 }
                 
-                # Flag if amplification > 1.3 (30% inflation)
                 FILTER (?orderQty / ?realDemand > 1.3)
             }
         """ ;
     ] .
 
-#### STOCKOUT RISK DETECTION (Validation) ####
+#### STOCKOUT RISK DETECTION ####
 
 bg:StockoutRiskShape a sh:NodeShape ;
     sh:targetClass bg:Inventory ;
@@ -244,20 +230,15 @@ bg:StockoutRiskShape a sh:NodeShape ;
         sh:message "WARNING: Stockout risk detected - inventory coverage below lead time" ;
         sh:severity sh:Warning ;
         sh:select """
-            PREFIX bg: <http://beergame.org/ontology#>
             SELECT $this ?coverage ?leadTime
             WHERE {
                 $this bg:currentInventory ?stock .
                 
-                # Get actor's lead time and demand rate
                 ?actor a bg:Actor ;
                        bg:shippingDelay ?leadTime ;
                        bg:demandRate ?rate .
                 
-                # Calculate coverage
                 BIND(?stock / ?rate AS ?coverage)
-                
-                # Flag if coverage < lead time
                 FILTER (?coverage < ?leadTime)
             }
         """ ;
@@ -270,12 +251,10 @@ bg:CostCalculationShape a sh:NodeShape ;
     sh:sparql [
         sh:message "Total cost calculation mismatch" ;
         sh:select """
-            PREFIX bg: <http://beergame.org/ontology#>
             SELECT $this ?reportedCost ?calculatedCost
             WHERE {
                 $this bg:totalCost ?reportedCost .
                 
-                # Calculate expected cost from inventory
                 ?inv a bg:Inventory ;
                      bg:currentInventory ?stock ;
                      bg:backlog ?backlog ;
@@ -283,18 +262,15 @@ bg:CostCalculationShape a sh:NodeShape ;
                      bg:backlogCost ?bCost .
                 
                 BIND((?stock * ?hCost) + (?backlog * ?bCost) AS ?calculatedCost)
-                
-                # Flag if mismatch > 1% tolerance
                 FILTER (ABS(?reportedCost - ?calculatedCost) / ?calculatedCost > 0.01)
             }
         """ ;
     ] .
 
-#### ActorMetrics must have exactly one Week.
+#### ACTOR METRICS VALIDATION ####
 
 bg:ActorMetricsShape a sh:NodeShape ;
     sh:targetClass bg:ActorMetrics ;
-
     sh:property [
         sh:path bg:forWeek ;
         sh:minCount 1 ;
@@ -303,11 +279,8 @@ bg:ActorMetricsShape a sh:NodeShape ;
         sh:message "ActorMetrics must be associated with exactly one bg:Week." ;
     ] .
 
-#### ActorMetrics must be connected to an Actor.
-
 bg:ActorHasMetricsShape a sh:NodeShape ;
     sh:targetClass bg:Actor ;
-
     sh:property [
         sh:path bg:hasMetrics ;
         sh:minCount 1 ;
@@ -315,30 +288,24 @@ bg:ActorHasMetricsShape a sh:NodeShape ;
         sh:message "Each Actor must have at least one ActorMetrics snapshot." ;
     ] .
 
-#### An Actor cannot have two metrics for the same Week.
-
 bg:UniqueMetricsPerWeekShape a sh:NodeShape ;
     sh:targetClass bg:Actor ;
-
     sh:sparql [
         a sh:SPARQLConstraint ;
         sh:message "An Actor cannot have more than one ActorMetrics for the same Week." ;
         sh:select """
-        SELECT $this
-        WHERE {
-            $this bg:hasMetrics ?m1, ?m2 .
-            ?m1 bg:forWeek ?w .
-            ?m2 bg:forWeek ?w .
-            FILTER (?m1 != ?m2)
-        }
+            SELECT $this
+            WHERE {
+                $this bg:hasMetrics ?m1, ?m2 .
+                ?m1 bg:forWeek ?w .
+                ?m2 bg:forWeek ?w .
+                FILTER (?m1 != ?m2)
+            }
         """ ;
     ] .
 
-#### Metrics should NOT hang directly on the Actor.
-
 bg:NoDirectMetricsOnActorShape a sh:NodeShape ;
     sh:targetClass bg:Actor ;
-
     sh:property [
         sh:path bg:inventoryCoverage ;
         sh:maxCount 0 ;
@@ -355,28 +322,23 @@ bg:NoDirectMetricsOnActorShape a sh:NodeShape ;
         sh:message "Risk flags must be attached to ActorMetrics, not directly to Actor." ;
     ] .
 
-
-#### A Week cannot sign itself up.
+#### WEEK VALIDATION ####
 
 bg:WeekNoSelfLoopShape a sh:NodeShape ;
     sh:targetClass bg:Week ;
-
     sh:sparql [
         a sh:SPARQLConstraint ;
         sh:message "A Week cannot be its own previousWeek." ;
         sh:select """
-        SELECT $this
-        WHERE {
-            $this bg:previousWeek $this .
-        }
+            SELECT $this
+            WHERE {
+                $this bg:previousWeek $this .
+            }
         """ ;
     ] .
 
-#### A Week has at most one previousWeek.
-
 bg:WeekPreviousUniquenessShape a sh:NodeShape ;
     sh:targetClass bg:Week ;
-
     sh:property [
         sh:path bg:previousWeek ;
         sh:maxCount 1 ;

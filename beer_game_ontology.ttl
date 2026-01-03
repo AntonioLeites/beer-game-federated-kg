@@ -67,6 +67,7 @@ bg:CustomerDemand a owl:Class ;
     rdfs:label "Customer Demand" ;
     rdfs:comment "End customer demand for beer" .
 
+
 #### CORE PROPERTIES ####
 
 # Actor relationships
@@ -303,7 +304,13 @@ bg:forWeek a owl:ObjectProperty ;
     rdfs:label "for week" ;
     rdfs:comment "Associates metrics with a specific week" .
 
+####  RELATIONSHIPS BETWEEN INSTANCIES AND ACTORS
 
+bg:belongsTo a rdf:Property ;
+    rdfs:domain rdfs:Resource ; 
+    rdfs:range bg:Actor ;
+    rdfs:label "belongs to actor" ;
+    rdfs:comment "Indicates which actor an inventory / order / shippment / ... instance belongs to." .
 
 #### SWRL RULES (Import Separately) ####
 

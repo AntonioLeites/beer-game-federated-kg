@@ -43,6 +43,7 @@ Apply SWRL rules to detect bullwhip amplification early."""^^xsd:string ;
 
 bg_distributor:Inventory_Week1 a bg:Inventory ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_distributor:Distributor_Gamma ;
     bg:currentInventory "12"^^xsd:integer ;
     bg:backlog "0"^^xsd:integer ;
     bg:incomingShipment "0"^^xsd:integer ;
@@ -56,6 +57,7 @@ bg_distributor:Inventory_Week1 a bg:Inventory ;
 
 bg_distributor:ReceivedOrder_Week1 a bg:Order ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_distributor:Distributor_Gamma ;
     bg:placedBy bg_wholesaler:Wholesaler_Beta ;
     bg:receivedBy bg_distributor:Distributor_Gamma ;
     bg:orderQuantity "4"^^xsd:integer .
@@ -66,6 +68,7 @@ bg_distributor:ReceivedOrder_Week1 a bg:Order ;
 
 bg_distributor:Order_Week1 a bg:Order ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_distributor:Distributor_Gamma ;
     bg:placedBy bg_distributor:Distributor_Gamma ;
     bg:receivedBy bg_factory:Factory_Delta ;
     bg:orderQuantity "4"^^xsd:integer ;
@@ -77,6 +80,7 @@ bg_distributor:Order_Week1 a bg:Order ;
 
 bg_distributor:Shipment_Week1_ToWholesaler a bg:Shipment ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_distributor:Distributor_Gamma ;
     bg:shippedFrom bg_distributor:Distributor_Gamma ;
     bg:shippedTo bg_wholesaler:Wholesaler_Beta ;
     bg:shippedQuantity "4"^^xsd:integer ;
@@ -84,6 +88,7 @@ bg_distributor:Shipment_Week1_ToWholesaler a bg:Shipment ;
 
 bg_distributor:Shipment_Week1_FromFactory a bg:Shipment ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_distributor:Distributor_Gamma ;
     bg:shippedFrom bg_factory:Factory_Delta ;
     bg:shippedTo bg_distributor:Distributor_Gamma ;
     bg:shippedQuantity "4"^^xsd:integer ;
@@ -95,6 +100,7 @@ bg_distributor:Shipment_Week1_FromFactory a bg:Shipment ;
 
 bg_distributor:Metrics_Week1 a bg:ActorMetrics ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_distributor:Distributor_Gamma ;
     bg:demandRate "4.0"^^xsd:decimal ;
     bg:inventoryCoverage "3.0"^^xsd:decimal ;
     bg:hasBullwhipRisk "false"^^xsd:boolean ;
@@ -109,6 +115,7 @@ bg_distributor:Distributor_Gamma
 
 bg_distributor:InternalData_Week1 a bg:InternalMetrics ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_distributor:Distributor_Gamma ;
     bg:distributorMargin "0.10"^^xsd:decimal ;
     bg:customerSatisfactionScore "97"^^xsd:integer ;
     bg:internalNotes "Week 1: Normal operations, no stockouts, stable ordering"^^xsd:string .

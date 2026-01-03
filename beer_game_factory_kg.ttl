@@ -51,6 +51,7 @@ bg_factory:ProductionCapacity a bg:ProductionLine ;
 
 bg_factory:Inventory_Week1 a bg:Inventory ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_factory:Factory_Delta ;
     bg:currentInventory "12"^^xsd:integer ;
     bg:backlog "0"^^xsd:integer ;
     bg:incomingShipment "0"^^xsd:integer ;
@@ -64,6 +65,7 @@ bg_factory:Inventory_Week1 a bg:Inventory ;
 
 bg_factory:ReceivedOrder_Week1 a bg:Order ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_factory:Factory_Delta ;
     bg:placedBy bg_distributor:Distributor_Gamma ;
     bg:receivedBy bg_factory:Factory_Delta ;
     bg:orderQuantity "4"^^xsd:integer .
@@ -74,6 +76,7 @@ bg_factory:ReceivedOrder_Week1 a bg:Order ;
 
 bg_factory:ProductionOrder_Week1 a bg:ProductionOrder ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_factory:Factory_Delta ;
     bg:producedQuantity "4"^^xsd:integer ;
     bg:completionWeek "2"^^xsd:integer ;
     rdfs:comment "Produce to match current demand" .
@@ -84,6 +87,7 @@ bg_factory:ProductionOrder_Week1 a bg:ProductionOrder ;
 
 bg_factory:Shipment_Week1 a bg:Shipment ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_factory:Factory_Delta ; 
     bg:shippedFrom bg_factory:Factory_Delta ;
     bg:shippedTo bg_distributor:Distributor_Gamma ;
     bg:shippedQuantity "4"^^xsd:integer ;
@@ -95,6 +99,7 @@ bg_factory:Shipment_Week1 a bg:Shipment ;
 
 bg_factory:Metrics_Week1 a bg:ActorMetrics ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_factory:Factory_Delta ;
     bg:demandRate "4.0"^^xsd:decimal ;
     bg:inventoryCoverage "3.0"^^xsd:decimal ;
     bg:hasBullwhipRisk "false"^^xsd:boolean ;
@@ -109,6 +114,7 @@ bg_factory:Factory_Delta
 
 bg_factory:RawMaterials_Week1 a bg:RawMaterials ;
     bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_factory:Factory_Delta ;
     bg:hopsInventory "500"^^xsd:integer ;
     bg:maltInventory "800"^^xsd:integer ;
     bg:yeastInventory "200"^^xsd:integer ;
