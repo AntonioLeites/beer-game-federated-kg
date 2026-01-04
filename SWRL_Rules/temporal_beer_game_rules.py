@@ -1,6 +1,8 @@
 """
-Beer Game Federated KG - TEMPORAL VERSION (FIXED)
-Fixed recursive URI generation and SPARQL query issues
+Beer Game Federated KG - TEMPORAL VERSION (UPDATED)
+Updated for SHACL compliance:
+- Integer quantities (orderQuantity, shipment quantity)
+- arrivalWeek as bg:Week IRI (not xsd:integer)
 """
 
 import requests
@@ -13,6 +15,8 @@ def get_temporal_rules():
     - bg:weekNumber → bg:forWeek (pointing to bg:Week instance)
     - Metrics attached to bg:ActorMetrics, not bg:Actor directly
     - All entities have bg:forWeek and bg:belongsTo
+    - Integer quantities for discrete units
+    - arrivalWeek as IRI to bg:Week
     """
     return {
         "BULLWHIP DETECTION": """
@@ -39,9 +43,9 @@ def get_temporal_rules():
                         bg:forWeek ?week ;
                         bg:actualDemand ?realDemand .
                 
-                # Calculate amplification ratio
+                # Calculate amplification ratio (quantities are integers)
                 FILTER(?realDemand > 0)
-                BIND(?qty / ?realDemand AS ?ratio)
+                BIND(xsd:decimal(?qty) / xsd:decimal(?realDemand) AS ?ratio)
                 FILTER(?ratio > 1.3)
                 
                 # Find ActorMetrics for this actor and week
@@ -77,8 +81,8 @@ def get_temporal_rules():
                         bg:forWeek ?week ;
                         bg:actualDemand ?realDemand .
                 
-                # Calculate max allowed order (120% of real demand)
-                BIND(?realDemand * 1.2 AS ?maxOrder)
+                # Calculate max allowed order (120% of real demand, rounded to integer)
+                BIND(CEIL(xsd:decimal(?realDemand) * 1.2) AS ?maxOrder)
                 
                 OPTIONAL { ?metrics bg:maxOrderQuantity ?oldMax }
             }
@@ -112,7 +116,7 @@ def get_temporal_rules():
                 
                 # Check if coverage < lead time
                 FILTER(?rate > 0)
-                BIND(?stock / ?rate AS ?coverage)
+                BIND(xsd:decimal(?stock) / ?rate AS ?coverage)
                 FILTER(?coverage < ?leadTime)
                 
                 OPTIONAL { ?metrics bg:hasStockoutRisk ?oldRisk }
@@ -143,7 +147,7 @@ def get_temporal_rules():
                     bg:currentInventory ?stock .
 
                 FILTER(?rate > 0)
-                BIND(?stock / ?rate AS ?coverage)
+                BIND(xsd:decimal(?stock) / ?rate AS ?coverage)
                 
                 OPTIONAL { ?metrics bg:inventoryCoverage ?any }
             }
@@ -203,7 +207,7 @@ def get_temporal_rules():
                 BIND(?optimalStock * 1.5 AS ?threshold)
                 
                 # Reduce budget if overstocked
-                FILTER(?stock > ?threshold)
+                FILTER(xsd:decimal(?stock) > ?threshold)
                 BIND(?normalBudget * 0.5 AS ?newBudget)
                 
                 OPTIONAL { ?actor bg:budgetConstraint ?oldBudget }
@@ -231,7 +235,7 @@ def get_temporal_rules():
                      bg:holdingCost ?hCost ;
                      bg:backlogCost ?bCost .
                 
-                BIND((?stock * ?hCost) + (?backlog * ?bCost) AS ?totalCost)
+                BIND((xsd:decimal(?stock) * ?hCost) + (xsd:decimal(?backlog) * ?bCost) AS ?totalCost)
                 
                 OPTIONAL { ?actor bg:totalCost ?oldCost }
             }
@@ -245,7 +249,7 @@ def get_temporal_rules():
                 ?shipment bg:arrivalWeek ?oldArrival .
             }
             INSERT {
-                ?shipment bg:arrivalWeek ?arrivalWeek .
+                ?shipment bg:arrivalWeek ?arrivalWeekIRI .
             }
             WHERE {
                 ?shipment a bg:Shipment ;
@@ -255,7 +259,11 @@ def get_temporal_rules():
                 ?week bg:weekNumber ?currentWeekNum .
                 ?actor bg:shippingDelay ?delay .
                 
-                BIND(?currentWeekNum + ?delay AS ?arrivalWeek)
+                # Calculate arrival week number
+                BIND(?currentWeekNum + ?delay AS ?arrivalWeekNum)
+                
+                # Convert to IRI (bg:Week_N)
+                BIND(IRI(CONCAT("http://beergame.org/ontology#Week_", STR(?arrivalWeekNum))) AS ?arrivalWeekIRI)
                 
                 OPTIONAL { ?shipment bg:arrivalWeek ?oldArrival }
             }
@@ -291,8 +299,10 @@ def get_temporal_rules():
 
                 BIND(xsd:decimal(?leadTime + ?reviewPeriod) AS ?totalDelay)
                 BIND(?rate * ?totalDelay AS ?targetStock)
-                BIND(?targetStock - ?currentStock AS ?orderQty)
-                BIND(xsd:decimal(IF(?orderQty > 0, ?orderQty, 0)) AS ?finalOrder)
+                BIND(?targetStock - xsd:decimal(?currentStock) AS ?orderQty)
+                
+                # Round up to nearest integer for discrete units
+                BIND(xsd:integer(CEIL(IF(?orderQty > 0, ?orderQty, 0))) AS ?finalOrder)
 
                 OPTIONAL { ?metrics bg:suggestedOrderQuantity ?oldOrder }
             }
@@ -321,7 +331,7 @@ def get_temporal_rules():
                         bg:actualDemand ?currentDemand .
                 
                 # Exponential smoothing: 30% new, 70% old
-                BIND((?currentDemand * 0.3) + (?oldRate * 0.7) AS ?smoothedRate)
+                BIND((xsd:decimal(?currentDemand) * 0.3) + (?oldRate * 0.7) AS ?smoothedRate)
                 
                 # Only update if change > 5%
                 BIND(ABS(?smoothedRate - ?oldRate) / ?oldRate AS ?changeRatio)
@@ -469,7 +479,6 @@ class TemporalBeerGameRuleExecutor:
                 print(f"      Status: {response.status_code}")
                 if response.status_code in [400, 500]:
                     print(f"      Error: {response.text[:500]}")
-                    # Print query for debugging
                     print(f"      Query preview (first 300 chars):")
                     print(f"      {query[:300]}")
                 return False
@@ -479,23 +488,23 @@ class TemporalBeerGameRuleExecutor:
     
     def cleanup_duplicate_metrics(self, repository):
         """
-        CRITICAL FIX: Remove duplicate/recursive metrics entries
+        CRITICAL FIX: Remove ALL metrics and recreate clean structure
+        This is a nuclear option but necessary to fix recursive URIs
         """
         query = """
             PREFIX bg: <http://beergame.org/ontology#>
             
             DELETE {
-                ?metrics ?p ?o .
                 ?actor bg:hasMetrics ?metrics .
+                ?metrics ?p ?o .
             }
             WHERE {
-                ?metrics a bg:ActorMetrics .
+                ?actor a bg:Actor ;
+                       bg:hasMetrics ?metrics .
                 ?metrics ?p ?o .
-                ?actor bg:hasMetrics ?metrics .
                 
-                # Find metrics with recursive URIs (containing "_Metrics" twice)
-                FILTER(CONTAINS(STR(?metrics), "_Metrics") && 
-                       CONTAINS(REPLACE(STR(?metrics), "^.*_Metrics[^_]*_(.*)$", "$1"), "_Metrics"))
+                # Delete ANY metrics (we'll recreate clean ones)
+                FILTER(CONTAINS(STR(?metrics), "Metrics"))
             }
         """
         
@@ -505,13 +514,13 @@ class TemporalBeerGameRuleExecutor:
         try:
             response = self.session.post(endpoint, data=query, headers=headers, timeout=30)
             if response.status_code == 204:
-                print(f"   ✓ Cleaned duplicate metrics in {repository}")
+                print(f"   ✓ Cleaned ALL metrics in {repository} - will recreate")
                 return True
             else:
-                print(f"   ⚠️  Could not clean duplicates: {response.status_code}")
+                print(f"   ⚠️  Could not clean metrics: {response.status_code}")
                 return False
         except Exception as e:
-            print(f"   ⚠️  Exception cleaning duplicates: {e}")
+            print(f"   ⚠️  Exception cleaning metrics: {e}")
             return False
     
     def execute_rule(self, rule_name, repository, dry_run=False):
@@ -538,7 +547,6 @@ class TemporalBeerGameRuleExecutor:
             else:
                 print(f"   ✗ Error executing '{rule_name}' on {repository}: {response.status_code}")
                 if response.status_code == 400:
-                    # Print first 500 chars of error
                     error_text = response.text[:500]
                     print(f"      Error: {error_text}")
                 return False
@@ -553,9 +561,9 @@ class TemporalBeerGameRuleExecutor:
         print(f"PROCESSING {repository.upper()} - WEEK {week_number}")
         print(f"{'='*60}")
         
-        # Step 0: Clean duplicates FIRST (if not dry run)
-        if not dry_run and week_number == 1:
-            print(f"→ Cleaning duplicate metrics...")
+        # Step 0: Clean ALL metrics for EVERY week (nuclear option)
+        if not dry_run:
+            print(f"→ Cleaning ALL metrics (will recreate)...")
             self.cleanup_duplicate_metrics(repository)
         
         # Step 1: Ensure Week instance exists
@@ -580,7 +588,7 @@ class TemporalBeerGameRuleExecutor:
         # Step 3: Apply all other rules
         for rule_name in self.rules.keys():
             if rule_name == "CLEAR RISK FLAGS":
-                continue  # Already executed
+                continue
             
             print(f"→ Rule: {rule_name}")
             
@@ -589,7 +597,7 @@ class TemporalBeerGameRuleExecutor:
             else:
                 failed += 1
             
-            time.sleep(0.1)  # Small pause between rules
+            time.sleep(0.1)
         
         print(f"\n{'='*60}")
         print(f"SUMMARY {repository.upper()}:")
@@ -650,7 +658,6 @@ class TemporalBeerGameRuleExecutor:
             GROUP BY ?actorName
         """
         
-        # Query federated repository or first repository
         endpoint = f"{self.base_url}/repositories/{self.repositories[0]}"
         headers = {"Accept": "application/sparql-results+json"}
         
@@ -685,15 +692,15 @@ class TemporalBeerGameRuleExecutor:
 
 def main():
     """Main execution function"""
-    print("🎯 BEER GAME FEDERATED KG - TEMPORAL VERSION (FIXED)")
+    print("🎯 BEER GAME FEDERATED KG - TEMPORAL VERSION (UPDATED)")
     print("=" * 70)
     print("Features:")
     print("  • ActorMetrics snapshots per week")
     print("  • bg:forWeek linking to bg:Week instances")
     print("  • bg:belongsTo for entity ownership")
-    print("  • Automatic Week and Metrics creation")
-    print("  • FIXED: No recursive URI generation")
-    print("  • FIXED: Duplicate metrics cleanup")
+    print("  • Integer quantities for discrete units")
+    print("  • arrivalWeek as bg:Week IRI")
+    print("  • SHACL compliant data types")
     print("=" * 70 + "\n")
     
     executor = TemporalBeerGameRuleExecutor()
@@ -707,7 +714,6 @@ def main():
     print("IF DRY RUN LOOKS GOOD, EXECUTE WITH dry_run=False")
     print("="*70 + "\n")
     
-    # Ask user if they want to proceed
     response = input("Proceed with real execution? (y/n): ").lower().strip()
     
     if response == 'y':
@@ -725,7 +731,6 @@ def main():
                 week, dry_run=False
             )
             
-            # Query and display week summary
             executor.query_week_summary(week)
             
             if week < num_weeks:

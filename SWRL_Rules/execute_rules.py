@@ -366,4 +366,4 @@ if __name__ == "__main__":
     executor = BeerGameRuleExecutor()
     
     # Test week 1
-    executor.execute_federated_week_simulation(week_number=1, dry_run=False)
+    executor.execute_federated_week_simulation(week_number=1, dry_run=True)

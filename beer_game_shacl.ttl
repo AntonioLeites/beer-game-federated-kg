@@ -1,347 +1,384 @@
-# ============================================================
-# BEER GAME - SHACL VALIDATION RULES (CLEANED)
-# Validates data integrity across federated KGs
-# ============================================================
-
-@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 @prefix sh: <http://www.w3.org/ns/shacl#> .
 @prefix bg: <http://beergame.org/ontology#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
-#### ORDER VALIDATION ####
+# ============================================================
+# ACTOR METRICS SHAPE - Core temporal metrics validation
+# ============================================================
+
+bg:ActorMetricsShape a sh:NodeShape ;
+    sh:targetClass bg:ActorMetrics ;
+    
+    # Must belong to exactly one Actor
+    sh:property [
+        sh:path bg:belongsTo ;
+        sh:class bg:Actor ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "ActorMetrics must belong to exactly one Actor." ;
+    ] ;
+    
+    # Must be associated with exactly one Week
+    sh:property [
+        sh:path bg:forWeek ;
+        sh:class bg:Week ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "ActorMetrics must be associated with exactly one Week." ;
+    ] ;
+    
+    # Inventory coverage validation
+    sh:property [
+        sh:path bg:inventoryCoverage ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0 ;
+        sh:maxCount 1 ;
+        sh:message "inventoryCoverage must be a non-negative decimal." ;
+    ] ;
+    
+    # Suggested order quantity validation
+    sh:property [
+        sh:path bg:suggestedOrderQuantity ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0 ;
+        sh:maxCount 1 ;
+        sh:message "suggestedOrderQuantity must be a non-negative decimal." ;
+    ] ;
+    
+    # Demand rate validation
+    sh:property [
+        sh:path bg:demandRate ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0 ;
+        sh:maxCount 1 ;
+        sh:message "demandRate must be a non-negative decimal." ;
+    ] ;
+    
+    # Bullwhip risk flag validation
+    sh:property [
+        sh:path bg:hasBullwhipRisk ;
+        sh:datatype xsd:boolean ;
+        sh:maxCount 1 ;
+        sh:message "hasBullwhipRisk must be a boolean value." ;
+    ] ;
+    
+    # Stockout risk flag validation
+    sh:property [
+        sh:path bg:hasStockoutRisk ;
+        sh:datatype xsd:boolean ;
+        sh:maxCount 1 ;
+        sh:message "hasStockoutRisk must be a boolean value." ;
+    ] .
+
+# ============================================================
+# UNIQUENESS: One ActorMetrics per Actor and Week
+# ============================================================
+
+bg:UniqueMetricsPerWeekShape a sh:NodeShape ;
+    sh:targetClass bg:ActorMetrics ;
+    sh:sparql [
+        sh:message "Only one ActorMetrics per Actor and Week is allowed." ;
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT $this
+            WHERE {
+                $this bg:belongsTo ?actor ;
+                      bg:forWeek ?week .
+                ?other bg:belongsTo ?actor ;
+                       bg:forWeek ?week .
+                FILTER (?other != $this)
+            }
+        """ ;
+    ] .
+
+# ============================================================
+# PROHIBITION: No direct metrics on Actor
+# ============================================================
+
+bg:NoDirectMetricsOnActorShape a sh:NodeShape ;
+    sh:targetClass bg:Actor ;
+    sh:sparql [
+        sh:message "Metrics must not be attached directly to Actor; use ActorMetrics." ;
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT $this
+            WHERE {
+                $this ?p ?v .
+                FILTER (?p IN (
+                    bg:inventoryCoverage,
+                    bg:suggestedOrderQuantity,
+                    bg:hasBullwhipRisk,
+                    bg:hasStockoutRisk,
+                    bg:demandRate
+                ))
+            }
+        """ ;
+    ] .
+
+# ============================================================
+# INVENTORY SHAPE - Temporal inventory validation
+# ============================================================
+
+bg:InventoryShape a sh:NodeShape ;
+    sh:targetClass bg:Inventory ;
+    
+    # Must belong to exactly one Actor
+    sh:property [
+        sh:path bg:belongsTo ;
+        sh:class bg:Actor ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Inventory must belong to exactly one Actor." ;
+    ] ;
+    
+    # Must be associated with exactly one Week
+    sh:property [
+        sh:path bg:forWeek ;
+        sh:class bg:Week ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Inventory must be associated with exactly one Week." ;
+    ] ;
+    
+    # Current inventory validation
+    sh:property [
+        sh:path bg:currentInventory ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0 ;
+        sh:maxCount 1 ;
+        sh:message "currentInventory must be a non-negative decimal." ;
+    ] ;
+    
+    # Backlog validation
+    sh:property [
+        sh:path bg:backlog ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0 ;
+        sh:maxCount 1 ;
+        sh:message "backlog must be a non-negative decimal." ;
+    ] ;
+    
+    # Holding cost validation
+    sh:property [
+        sh:path bg:holdingCost ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0 ;
+        sh:maxCount 1 ;
+        sh:message "holdingCost must be a non-negative decimal." ;
+    ] ;
+    
+    # Backlog cost validation
+    sh:property [
+        sh:path bg:backlogCost ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0 ;
+        sh:maxCount 1 ;
+        sh:message "backlogCost must be a non-negative decimal." ;
+    ] .
+
+# ============================================================
+# ORDER SHAPE - Order flow validation
+# ============================================================
 
 bg:OrderShape a sh:NodeShape ;
     sh:targetClass bg:Order ;
+    
+    # Must be placed by exactly one Actor
+    sh:property [
+        sh:path bg:placedBy ;
+        sh:class bg:Actor ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Order must be placed by exactly one Actor." ;
+    ] ;
+    
+    # Must be received by exactly one Actor (upstream supplier)
+    sh:property [
+        sh:path bg:receivedBy ;
+        sh:class bg:Actor ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Order must be received by exactly one Actor (upstream supplier)." ;
+    ] ;
+    
+    # Must be associated with exactly one Week
+    sh:property [
+        sh:path bg:forWeek ;
+        sh:class bg:Week ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Order must be associated with exactly one Week." ;
+    ] ;
+    
+    # Order quantity validation - INTEGER for discrete units
     sh:property [
         sh:path bg:orderQuantity ;
         sh:datatype xsd:integer ;
         sh:minInclusive 0 ;
         sh:maxCount 1 ;
-        sh:message "Order quantity must be a non-negative integer" ;
-    ] ;
-    sh:property [
-        sh:path bg:forWeek ;
-        sh:datatype xsd:integer ;
-        sh:minInclusive 1 ;
-        sh:maxCount 1 ;
-        sh:message "Week number must be a positive integer" ;
-    ] ;
-    sh:property [
-        sh:path bg:placedBy ;
-        sh:nodeKind sh:IRI ;
-        sh:class bg:Actor ;
-        sh:minCount 1 ;
-        sh:maxCount 1 ;
-        sh:message "Order must have exactly one actor placing it" ;
-    ] ;
-    sh:property [
-        sh:path bg:receivedBy ;
-        sh:nodeKind sh:IRI ;
-        sh:class bg:Actor ;
-        sh:minCount 1 ;
-        sh:maxCount 1 ;
-        sh:message "Order must have exactly one recipient" ;
+        sh:message "orderQuantity must be a non-negative integer (discrete units)." ;
     ] .
 
-#### INVENTORY VALIDATION ####
-
-bg:InventoryShape a sh:NodeShape ;
-    sh:targetClass bg:Inventory ;
-    sh:property [
-        sh:path bg:currentInventory ;
-        sh:datatype xsd:integer ;
-        sh:minInclusive 0 ;
-        sh:maxCount 1 ;
-        sh:message "Current inventory must be non-negative" ;
-    ] ;
-    sh:property [
-        sh:path bg:backlog ;
-        sh:datatype xsd:integer ;
-        sh:minInclusive 0 ;
-        sh:maxCount 1 ;
-        sh:message "Backlog must be non-negative" ;
-    ] ;
-    sh:property [
-        sh:path bg:holdingCost ;
-        sh:datatype xsd:decimal ;
-        sh:minInclusive 0.0 ;
-        sh:maxCount 1 ;
-        sh:message "Holding cost must be non-negative" ;
-    ] ;
-    sh:property [
-        sh:path bg:backlogCost ;
-        sh:datatype xsd:decimal ;
-        sh:minInclusive 0.0 ;
-        sh:maxCount 1 ;
-        sh:message "Backlog cost must be non-negative" ;
-    ] .
-
-#### SHIPMENT VALIDATION ####
+# ============================================================
+# SHIPMENT SHAPE - Shipment flow validation
+# ============================================================
 
 bg:ShipmentShape a sh:NodeShape ;
     sh:targetClass bg:Shipment ;
-    sh:property [
-        sh:path bg:shippedQuantity ;
-        sh:datatype xsd:integer ;
-        sh:minInclusive 0 ;
-        sh:maxCount 1 ;
-    ] ;
-    sh:property [
-        sh:path bg:arrivalWeek ;
-        sh:datatype xsd:integer ;
-        sh:minInclusive 1 ;
-        sh:maxCount 1 ;
-    ] ;
+    
+    # Must be shipped from exactly one Actor
     sh:property [
         sh:path bg:shippedFrom ;
         sh:class bg:Actor ;
+        sh:nodeKind sh:IRI ;
         sh:minCount 1 ;
         sh:maxCount 1 ;
+        sh:message "Shipment must be shipped from exactly one Actor." ;
     ] ;
+    
+    # Must be shipped to exactly one Actor (downstream customer)
     sh:property [
         sh:path bg:shippedTo ;
         sh:class bg:Actor ;
+        sh:nodeKind sh:IRI ;
         sh:minCount 1 ;
         sh:maxCount 1 ;
+        sh:message "Shipment must be shipped to exactly one Actor (downstream customer)." ;
     ] ;
-    sh:sparql [
-        sh:message "Arrival week must be greater than shipment week" ;
-        sh:select """
-            SELECT $this ?shipWeek ?arrivalWeek
-            WHERE {
-                $this bg:forWeek ?shipWeek ;
-                      bg:arrivalWeek ?arrivalWeek .
-                FILTER (?arrivalWeek <= ?shipWeek)
-            }
-        """ ;
-    ] .
-
-#### BUDGET CONSTRAINT VALIDATION ####
-
-bg:BudgetConstraintShape a sh:NodeShape ;
-    sh:targetClass bg:Order ;
-    sh:sparql [
-        sh:message "Order exceeds budget constraint" ;
-        sh:select """
-            SELECT $this ?orderQty ?budget
-            WHERE {
-                $this bg:orderQuantity ?orderQty ;
-                      bg:placedBy ?actor .
-                ?actor bg:budgetConstraint ?budget .
-                FILTER (?orderQty > ?budget)
-            }
-        """ ;
-    ] .
-
-#### GUARDRAIL VALIDATION (Max Order Quantity) ####
-
-bg:MaxOrderShape a sh:NodeShape ;
-    sh:targetClass bg:Order ;
-    sh:sparql [
-        sh:message "Order quantity exceeds dynamic guardrail (max order)" ;
-        sh:select """
-            SELECT $this ?orderQty ?maxOrder
-            WHERE {
-                $this bg:orderQuantity ?orderQty ;
-                      bg:placedBy ?actor .
-                ?actor bg:maxOrderQuantity ?maxOrder .
-                FILTER (?orderQty > ?maxOrder)
-            }
-        """ ;
-    ] .
-
-#### CROSS-KG VALIDATION: Order-Shipment Consistency ####
-
-bg:OrderShipmentConsistencyShape a sh:NodeShape ;
-    sh:targetClass bg:Order ;
-    sh:sparql [
-        sh:message "Order has no corresponding shipment after processing delay" ;
-        sh:select """
-            SELECT $this ?orderWeek ?processingWeek
-            WHERE {
-                $this bg:forWeek ?orderWeek ;
-                      bg:receivedBy ?recipient .
-                ?recipient bg:orderDelay ?delay .
-                BIND(?orderWeek + ?delay AS ?processingWeek)
-                
-                FILTER NOT EXISTS {
-                    ?shipment a bg:Shipment ;
-                              bg:shippedFrom ?recipient ;
-                              bg:forWeek ?processingWeek .
-                }
-            }
-        """ ;
-    ] .
-
-#### FEDERATED VALIDATION: Demand Propagation ####
-
-bg:DemandPropagationShape a sh:NodeShape ;
-    sh:targetClass bg:Retailer ;
-    sh:sparql [
-        sh:message "Wholesaler's demand rate should match retailer's actual demand" ;
-        sh:select """
-            PREFIX bg_wholesaler: <http://beergame.org/wholesaler#>
-            PREFIX bg_retailer: <http://beergame.org/retailer#>
-            SELECT ?realDemand ?wholesalerDemand
-            WHERE {
-                ?demand a bg:CustomerDemand ;
-                        bg:actualDemand ?realDemand .
-                
-                SERVICE <http://localhost:7200/repositories/BeerGame_Wholesaler> {
-                    bg_wholesaler:Wholesaler_Beta bg:demandRate ?wholesalerDemand .
-                }
-                
-                FILTER (ABS(?wholesalerDemand - ?realDemand) / ?realDemand > 0.1)
-            }
-        """ ;
-    ] .
-
-#### BULLWHIP EFFECT DETECTION ####
-
-bg:BullwhipDetectionShape a sh:NodeShape ;
-    sh:targetClass bg:Order ;
-    sh:sparql [
-        sh:message "ALERT: Order amplification detected (bullwhip effect)" ;
-        sh:severity sh:Warning ;
-        sh:select """
-            PREFIX bg_retailer: <http://beergame.org/retailer#>
-            SELECT $this ?orderQty ?realDemand (?orderQty / ?realDemand as ?amplification)
-            WHERE {
-                $this bg:orderQuantity ?orderQty ;
-                      bg:forWeek ?week .
-                
-                SERVICE <http://localhost:7200/repositories/BeerGame_Retailer> {
-                    ?demand a bg:CustomerDemand ;
-                            bg:forWeek ?week ;
-                            bg:actualDemand ?realDemand .
-                }
-                
-                FILTER (?orderQty / ?realDemand > 1.3)
-            }
-        """ ;
-    ] .
-
-#### STOCKOUT RISK DETECTION ####
-
-bg:StockoutRiskShape a sh:NodeShape ;
-    sh:targetClass bg:Inventory ;
-    sh:sparql [
-        sh:message "WARNING: Stockout risk detected - inventory coverage below lead time" ;
-        sh:severity sh:Warning ;
-        sh:select """
-            SELECT $this ?coverage ?leadTime
-            WHERE {
-                $this bg:currentInventory ?stock .
-                
-                ?actor a bg:Actor ;
-                       bg:shippingDelay ?leadTime ;
-                       bg:demandRate ?rate .
-                
-                BIND(?stock / ?rate AS ?coverage)
-                FILTER (?coverage < ?leadTime)
-            }
-        """ ;
-    ] .
-
-#### COST CALCULATION VALIDATION ####
-
-bg:CostCalculationShape a sh:NodeShape ;
-    sh:targetClass bg:Actor ;
-    sh:sparql [
-        sh:message "Total cost calculation mismatch" ;
-        sh:select """
-            SELECT $this ?reportedCost ?calculatedCost
-            WHERE {
-                $this bg:totalCost ?reportedCost .
-                
-                ?inv a bg:Inventory ;
-                     bg:currentInventory ?stock ;
-                     bg:backlog ?backlog ;
-                     bg:holdingCost ?hCost ;
-                     bg:backlogCost ?bCost .
-                
-                BIND((?stock * ?hCost) + (?backlog * ?bCost) AS ?calculatedCost)
-                FILTER (ABS(?reportedCost - ?calculatedCost) / ?calculatedCost > 0.01)
-            }
-        """ ;
-    ] .
-
-#### ACTOR METRICS VALIDATION ####
-
-bg:ActorMetricsShape a sh:NodeShape ;
-    sh:targetClass bg:ActorMetrics ;
+    
+    # Must be associated with exactly one Week (creation week)
     sh:property [
         sh:path bg:forWeek ;
+        sh:class bg:Week ;
+        sh:nodeKind sh:IRI ;
         sh:minCount 1 ;
         sh:maxCount 1 ;
+        sh:message "Shipment must be associated with exactly one Week." ;
+    ] ;
+    
+    # Quantity validation - INTEGER for discrete units
+    sh:property [
+        sh:path bg:quantity ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxCount 1 ;
+        sh:message "Shipment quantity must be a non-negative integer (discrete units)." ;
+    ] ;
+    
+    # Arrival week validation - LINKED to bg:Week for consistency
+    sh:property [
+        sh:path bg:arrivalWeek ;
         sh:class bg:Week ;
-        sh:message "ActorMetrics must be associated with exactly one bg:Week." ;
+        sh:nodeKind sh:IRI ;
+        sh:maxCount 1 ;
+        sh:message "arrivalWeek must reference a valid bg:Week instance." ;
     ] .
 
-bg:ActorHasMetricsShape a sh:NodeShape ;
-    sh:targetClass bg:Actor ;
-    sh:property [
-        sh:path bg:hasMetrics ;
-        sh:minCount 1 ;
-        sh:class bg:ActorMetrics ;
-        sh:message "Each Actor must have at least one ActorMetrics snapshot." ;
-    ] .
+# ============================================================
+# WEEK SHAPE - Temporal consistency validation
+# ============================================================
 
-bg:UniqueMetricsPerWeekShape a sh:NodeShape ;
-    sh:targetClass bg:Actor ;
-    sh:sparql [
-        a sh:SPARQLConstraint ;
-        sh:message "An Actor cannot have more than one ActorMetrics for the same Week." ;
-        sh:select """
-            SELECT $this
-            WHERE {
-                $this bg:hasMetrics ?m1, ?m2 .
-                ?m1 bg:forWeek ?w .
-                ?m2 bg:forWeek ?w .
-                FILTER (?m1 != ?m2)
-            }
-        """ ;
-    ] .
-
-bg:NoDirectMetricsOnActorShape a sh:NodeShape ;
-    sh:targetClass bg:Actor ;
-    sh:property [
-        sh:path bg:inventoryCoverage ;
-        sh:maxCount 0 ;
-        sh:message "inventoryCoverage must be attached to ActorMetrics, not directly to Actor." ;
-    ] ;
-    sh:property [
-        sh:path bg:demandRate ;
-        sh:maxCount 0 ;
-        sh:message "demandRate must be attached to ActorMetrics, not directly to Actor." ;
-    ] ;
-    sh:property [
-        sh:path bg:hasBullwhipRisk ;
-        sh:maxCount 0 ;
-        sh:message "Risk flags must be attached to ActorMetrics, not directly to Actor." ;
-    ] .
-
-#### WEEK VALIDATION ####
-
-bg:WeekNoSelfLoopShape a sh:NodeShape ;
+bg:WeekShape a sh:NodeShape ;
     sh:targetClass bg:Week ;
+    
+    # Week number validation
+    sh:property [
+        sh:path bg:weekNumber ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 1 ;
+        sh:maxCount 1 ;
+        sh:message "weekNumber must be a positive integer." ;
+    ] ;
+    
+    # Prevent self-reference
     sh:sparql [
-        a sh:SPARQLConstraint ;
-        sh:message "A Week cannot be its own previousWeek." ;
+        sh:message "A Week must not reference itself as previousWeek." ;
         sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
             SELECT $this
             WHERE {
                 $this bg:previousWeek $this .
             }
         """ ;
+    ] ;
+    
+    # Prevent multiple previous weeks
+    sh:sparql [
+        sh:message "A Week must have at most one previousWeek." ;
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT $this
+            WHERE {
+                $this bg:previousWeek ?w1, ?w2 .
+                FILTER (?w1 != ?w2)
+            }
+        """ ;
     ] .
 
-bg:WeekPreviousUniquenessShape a sh:NodeShape ;
-    sh:targetClass bg:Week ;
+# ============================================================
+# CUSTOMER DEMAND SHAPE - Demand validation
+# ============================================================
+
+bg:CustomerDemandShape a sh:NodeShape ;
+    sh:targetClass bg:CustomerDemand ;
+    
+    # Must be associated with exactly one Week
     sh:property [
-        sh:path bg:previousWeek ;
-        sh:maxCount 1 ;
+        sh:path bg:forWeek ;
         sh:class bg:Week ;
-        sh:message "A Week can have at most one previousWeek." ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "CustomerDemand must be associated with exactly one Week." ;
+    ] ;
+    
+    # Actual demand validation
+    sh:property [
+        sh:path bg:actualDemand ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxCount 1 ;
+        sh:message "actualDemand must be a non-negative integer." ;
+    ] .
+
+# ============================================================
+# ACTOR SHAPE - Basic actor validation
+# ============================================================
+
+bg:ActorShape a sh:NodeShape ;
+    sh:targetClass bg:Actor ;
+    
+    # Shipping delay validation
+    sh:property [
+        sh:path bg:shippingDelay ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxCount 1 ;
+        sh:message "shippingDelay must be a non-negative integer." ;
+    ] ;
+    
+    # Order delay validation
+    sh:property [
+        sh:path bg:orderDelay ;
+        sh:datatype xsd:integer ;
+        sh:minInclusive 0 ;
+        sh:maxCount 1 ;
+        sh:message "orderDelay must be a non-negative integer." ;
+    ] ;
+    
+    # Budget constraint validation
+    sh:property [
+        sh:path bg:budgetConstraint ;
+        sh:datatype xsd:decimal ;
+        sh:minInclusive 0 ;
+        sh:maxCount 1 ;
+        sh:message "budgetConstraint must be a non-negative decimal." ;
     ] .
