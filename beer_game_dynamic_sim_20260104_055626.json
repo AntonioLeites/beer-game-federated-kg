@@ -1,0 +1,100 @@
+{
+  "simulation": "Beer Game Dynamic Simulation",
+  "start_time": "2026-01-04T05:56:26.082837",
+  "end_time": "2026-01-04T05:56:54.303480",
+  "weeks": 2,
+  "results": [
+    {
+      "week": 1,
+      "timestamp": "2026-01-04T05:56:26.083080",
+      "phases": {
+        "demand": 4,
+        "arrivals": {
+          "Retailer": 0,
+          "Wholesaler": 0,
+          "Distributor": 0,
+          "Factory": 0
+        },
+        "inventories": {
+          "Retailer": 8,
+          "Wholesaler": 12,
+          "Distributor": 12,
+          "Factory": 12
+        },
+        "rules": {
+          "executed": 44,
+          "failed": 0
+        },
+        "orders": {
+          "Retailer": 4,
+          "Wholesaler": 4,
+          "Distributor": 4
+        },
+        "shipments": {
+          "Retailer": {
+            "qty": 4,
+            "arrival": 3
+          },
+          "Wholesaler": {
+            "qty": 4,
+            "arrival": 3
+          },
+          "Distributor": {
+            "qty": 4,
+            "arrival": 3
+          },
+          "Factory": {
+            "qty": 4,
+            "arrival": 3
+          }
+        }
+      }
+    },
+    {
+      "week": 2,
+      "timestamp": "2026-01-04T05:56:40.325343",
+      "phases": {
+        "demand": 8,
+        "arrivals": {
+          "Retailer": 0,
+          "Wholesaler": 0,
+          "Distributor": 0,
+          "Factory": 0
+        },
+        "inventories": {
+          "Retailer": 4,
+          "Wholesaler": 12,
+          "Distributor": 12,
+          "Factory": 12
+        },
+        "rules": {
+          "executed": 44,
+          "failed": 0
+        },
+        "orders": {
+          "Retailer": 4,
+          "Wholesaler": 4,
+          "Distributor": 4
+        },
+        "shipments": {
+          "Retailer": {
+            "qty": 4,
+            "arrival": 4
+          },
+          "Wholesaler": {
+            "qty": 4,
+            "arrival": 4
+          },
+          "Distributor": {
+            "qty": 4,
+            "arrival": 4
+          },
+          "Factory": {
+            "qty": 4,
+            "arrival": 4
+          }
+        }
+      }
+    }
+  ]
+}

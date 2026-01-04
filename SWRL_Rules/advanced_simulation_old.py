@@ -1,7 +1,6 @@
 """
 Beer Game Federated KG - Dynamic Simulation Engine
 Simulates the complete beer game dynamics: demand, orders, shipments, inventory updates
-UPDATED: SHACL compliant (integer quantities, arrivalWeek as IRI, receivedBy/shippedTo)
 """
 
 import time
@@ -35,35 +34,27 @@ class BeerGameDynamicSimulation:
         self.rule_executor = TemporalBeerGameRuleExecutor(graphdb_url)
         self.session = requests.Session()
         
-        # Supply chain configuration (upstream flow)
-        self.supply_chain = {
+        # Actor chain configuration
+        self.actors = {
             "Retailer": {
                 "repo": "BG_Retailer",
                 "uri": "bg_retailer:Retailer_Alpha",
-                "namespace": "bg_retailer",
-                "upstream_actor": "Wholesaler",
-                "upstream_uri": "bg_wholesaler:Wholesaler_Beta"
+                "upstream": "Wholesaler"
             },
             "Wholesaler": {
-                "repo": "BG_Wholesaler",  # fixed typo
+                "repo": "BG_Whosaler",  # Keep typo
                 "uri": "bg_wholesaler:Wholesaler_Beta",
-                "namespace": "bg_wholesaler",
-                "upstream_actor": "Distributor",
-                "upstream_uri": "bg_distributor:Distributor_Gamma"
+                "upstream": "Distributor"
             },
             "Distributor": {
                 "repo": "BG_Distributor",
                 "uri": "bg_distributor:Distributor_Gamma",
-                "namespace": "bg_distributor",
-                "upstream_actor": "Factory",
-                "upstream_uri": "bg_factory:Factory_Delta"
+                "upstream": "Factory"
             },
             "Factory": {
                 "repo": "BG_Factory",
                 "uri": "bg_factory:Factory_Delta",
-                "namespace": "bg_factory",
-                "upstream_actor": None,  # No upstream
-                "upstream_uri": None
+                "upstream": None  # No upstream
             }
         }
         
@@ -118,10 +109,11 @@ class BeerGameDynamicSimulation:
         print(f"\n→ Phase 2: Processing shipment arrivals...")
         arrivals = self.process_shipment_arrivals(week)
         result["phases"]["arrivals"] = arrivals
+        print(f"   Shipments arrived: {arrivals}")
         
         # PHASE 3: Update inventories (add arrivals, subtract demand/orders)
         print(f"\n→ Phase 3: Updating inventories...")
-        inventories = self.update_inventories(week, demand, arrivals)
+        inventories = self.update_inventories(week, demand)
         result["phases"]["inventories"] = inventories
         
         # PHASE 4: Execute SPARQL rules (calculate metrics, detect risks)
@@ -138,7 +130,7 @@ class BeerGameDynamicSimulation:
         
         # PHASE 6: Create shipments (will arrive in future weeks)
         print(f"\n→ Phase 6: Creating shipments...")
-        shipments = self.create_shipments(week, orders)
+        shipments = self.create_shipments(week)
         result["phases"]["shipments"] = shipments
         
         return result
@@ -178,81 +170,69 @@ class BeerGameDynamicSimulation:
         """Process shipments that arrive this week"""
         arrivals = {}
         
-        for actor_name, config in self.supply_chain.items():
-            # Query shipments arriving this week (arrivalWeek is now an IRI)
+        for actor_name, config in self.actors.items():
+            # Query shipments arriving this week
             query = f"""
                 PREFIX bg: <http://beergame.org/ontology#>
                 
-                SELECT ?shipment ?qty
+                SELECT ?shipment ?qty ?from
                 WHERE {{
                     ?shipment a bg:Shipment ;
-                              bg:arrivalWeek bg:Week_{week} ;
+                              bg:arrivalWeek "{week}"^^xsd:integer ;
                               bg:quantity ?qty ;
-                              bg:shippedTo {config['uri']} .
+                              bg:shippedFrom ?from .
+                    
+                    FILTER(CONTAINS(STR(?shipment), "{config['repo'].replace('BG_', '').lower()}"))
                 }}
             """
             
             results = self._execute_query(query, config['repo'])
-            bindings = results.get("results", {}).get("bindings", [])
-            
-            total_arriving = sum(int(b["qty"]["value"]) for b in bindings)
-            arrivals[actor_name] = total_arriving
-            
-            if total_arriving > 0:
-                print(f"   {actor_name}: {total_arriving} units arriving")
+            arrivals[actor_name] = len(results.get("results", {}).get("bindings", []))
         
         return arrivals
     
-    def update_inventories(self, week, customer_demand, arrivals):
+    def update_inventories(self, week, customer_demand):
         """Update inventory levels for all actors"""
         inventories = {}
         
-        for actor_name, config in self.supply_chain.items():
+        for actor_name, config in self.actors.items():
             repo = config['repo']
             
-            # Get current inventory from previous week
-            prev_week = week - 1
-            if prev_week > 0:
-                query = f"""
-                    PREFIX bg: <http://beergame.org/ontology#>
-                    SELECT ?stock WHERE {{
-                        ?inv a bg:Inventory ;
-                             bg:forWeek bg:Week_{prev_week} ;
-                             bg:belongsTo {config['uri']} ;
-                             bg:currentInventory ?stock .
-                    }}
-                """
-                
-                result = self._execute_query(query, repo)
-                bindings = result.get("results", {}).get("bindings", [])
-                
-                if bindings:
-                    current_stock = int(bindings[0]["stock"]["value"])
-                else:
-                    current_stock = 12  # Default
+            # Get current inventory
+            query = f"""
+                PREFIX bg: <http://beergame.org/ontology#>
+                SELECT ?inv ?stock WHERE {{
+                    ?inv a bg:Inventory ;
+                         bg:forWeek bg:Week_{week - 1} ;
+                         bg:belongsTo {config['uri']} ;
+                         bg:currentInventory ?stock .
+                }}
+            """
+            
+            result = self._execute_query(query, repo)
+            bindings = result.get("results", {}).get("bindings", [])
+            
+            if bindings:
+                current_stock = int(bindings[0]["stock"]["value"])
             else:
-                current_stock = 12  # Initial inventory
+                current_stock = 12  # Default initial inventory
             
             # Calculate new stock
-            arrivals_qty = arrivals.get(actor_name, 0)
-            
-            # Retailer loses customer demand, others lose orders to downstream
+            # (In real game: + arrivals - demand/orders)
+            # Simplified: just subtract customer demand for retailer
             if actor_name == "Retailer":
-                demand_loss = customer_demand
+                new_stock = max(0, current_stock - customer_demand)
             else:
-                # Simplified: assume 4 units shipped downstream
-                demand_loss = 4
-            
-            new_stock = max(0, current_stock + arrivals_qty - demand_loss)
+                new_stock = current_stock  # Placeholder
             
             # Create new Inventory for this week
-            inv_uri = f"{config['namespace']}:Inventory_Week{week}"
             update = f"""
                 PREFIX bg: <http://beergame.org/ontology#>
                 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
                 
                 INSERT DATA {{
-                    {inv_uri} a bg:Inventory ;
+                    {config['uri'].replace(':', ':Inventory_Week' + str(week)).replace('_Alpha', '').replace('_Beta', '').replace('_Gamma', '').replace('_Delta', '')}
+                    {config['repo'].lower().replace('bg_', 'bg_')}:Inventory_Week{week} a bg:Inventory ;
                         bg:forWeek bg:Week_{week} ;
                         bg:belongsTo {config['uri']} ;
                         bg:currentInventory "{new_stock}"^^xsd:integer ;
@@ -264,7 +244,7 @@ class BeerGameDynamicSimulation:
             
             self._execute_update(update, repo)
             inventories[actor_name] = new_stock
-            print(f"   {actor_name}: {current_stock} + {arrivals_qty} - {demand_loss} = {new_stock}")
+            print(f"   {actor_name}: {current_stock} → {new_stock}")
         
         return inventories
     
@@ -272,11 +252,7 @@ class BeerGameDynamicSimulation:
         """Process ordering decisions based on suggestedOrderQuantity"""
         orders = {}
         
-        for actor_name, config in self.supply_chain.items():
-            # Skip Factory (no upstream to order from)
-            if not config['upstream_actor']:
-                continue
-            
+        for actor_name, config in self.actors.items():
             # Get suggested order quantity from ActorMetrics
             query = f"""
                 PREFIX bg: <http://beergame.org/ontology#>
@@ -292,40 +268,35 @@ class BeerGameDynamicSimulation:
             bindings = result.get("results", {}).get("bindings", [])
             
             if bindings:
-                order_qty = int(bindings[0]["suggested"]["value"])
+                order_qty = float(bindings[0]["suggested"]["value"])
             else:
-                order_qty = 4  # Default
+                order_qty = 4.0  # Default
             
-            # Create Order entity with receivedBy (upstream supplier)
-            order_uri = f"{config['namespace']}:Order_Week{week}"
-            update = f"""
-                PREFIX bg: <http://beergame.org/ontology#>
-                PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-                
-                INSERT DATA {{
-                    {order_uri} a bg:Order ;
-                        bg:forWeek bg:Week_{week} ;
-                        bg:placedBy {config['uri']} ;
-                        bg:receivedBy {config['upstream_uri']} ;
-                        bg:orderQuantity "{order_qty}"^^xsd:integer .
-                }}
-            """
-            self._execute_update(update, config['repo'])
-            orders[actor_name] = order_qty
-            print(f"   {actor_name} → {config['upstream_actor']}: {order_qty} units")
+            # Create Order entity
+            if config['upstream']:  # Not Factory
+                order_uri = f"{config['repo'].lower()}:Order_Week{week}"
+                update = f"""
+                    PREFIX bg: <http://beergame.org/ontology#>
+                    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+                    
+                    INSERT DATA {{
+                        {order_uri} a bg:Order ;
+                            bg:forWeek bg:Week_{week} ;
+                            bg:placedBy {config['uri']} ;
+                            bg:orderQuantity "{int(order_qty)}"^^xsd:integer .
+                    }}
+                """
+                self._execute_update(update, config['repo'])
+                orders[actor_name] = int(order_qty)
+                print(f"   {actor_name} orders: {int(order_qty)} units")
         
         return orders
     
-    def create_shipments(self, week, orders):
+    def create_shipments(self, week):
         """Create shipments that will arrive in future weeks"""
         shipments = {}
         
-        # Reverse order: Factory ships to Distributor, Distributor to Wholesaler, etc.
-        chain_order = ["Factory", "Distributor", "Wholesaler", "Retailer"]
-        
-        for actor_name in chain_order:
-            config = self.supply_chain[actor_name]
-            
+        for actor_name, config in self.actors.items():
             # Get actor's shipping delay
             query = f"""
                 PREFIX bg: <http://beergame.org/ontology#>
@@ -342,23 +313,13 @@ class BeerGameDynamicSimulation:
             else:
                 delay = 2
             
-            arrival_week_num = week + delay
+            arrival_week = week + delay
             
-            # Determine quantity to ship and who receives it
-            if actor_name == "Factory":
-                # Ships to Distributor based on Distributor's order
-                qty = orders.get("Distributor", 4)
-                receiver_uri = self.supply_chain["Distributor"]["uri"]
-            elif actor_name == "Distributor":
-                qty = orders.get("Wholesaler", 4)
-                receiver_uri = self.supply_chain["Wholesaler"]["uri"]
-            elif actor_name == "Wholesaler":
-                qty = orders.get("Retailer", 4)
-                receiver_uri = self.supply_chain["Retailer"]["uri"]
-            else:  # Retailer ships to customer (not modeled)
-                continue
+            # Create shipment (quantity = current order received)
+            # Simplified: use fixed quantity
+            qty = 4
             
-            shipment_uri = f"{config['namespace']}:Shipment_Week{week}"
+            shipment_uri = f"{config['repo'].lower()}:Shipment_Week{week}"
             update = f"""
                 PREFIX bg: <http://beergame.org/ontology#>
                 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
@@ -367,15 +328,13 @@ class BeerGameDynamicSimulation:
                     {shipment_uri} a bg:Shipment ;
                         bg:forWeek bg:Week_{week} ;
                         bg:shippedFrom {config['uri']} ;
-                        bg:shippedTo {receiver_uri} ;
                         bg:quantity "{qty}"^^xsd:integer ;
-                        bg:arrivalWeek bg:Week_{arrival_week_num} .
+                        bg:arrivalWeek "{arrival_week}"^^xsd:integer .
                 }}
             """
             
             self._execute_update(update, config['repo'])
-            shipments[actor_name] = {"qty": qty, "arrival": arrival_week_num, "to": receiver_uri}
-            print(f"   {actor_name}: ships {qty} units (arrives Week {arrival_week_num})")
+            shipments[actor_name] = {"qty": qty, "arrival": arrival_week}
         
         return shipments
     

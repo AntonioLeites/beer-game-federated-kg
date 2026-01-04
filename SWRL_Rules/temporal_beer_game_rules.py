@@ -369,7 +369,7 @@ class TemporalBeerGameRuleExecutor:
         # Fix typo in repository name
         self.repositories = [
             "BG_Retailer", 
-            "BG_Whosaler",     # Keep typo as-is since that's how it's named in GraphDB
+            "BG_Wholesaler",     # Keep typo as-is since that's how it's named in GraphDB - Fixed 
             "BG_Distributor", 
             "BG_Factory"
         ]
