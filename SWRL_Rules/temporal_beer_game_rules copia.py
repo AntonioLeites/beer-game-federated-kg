@@ -146,11 +146,10 @@ def get_temporal_rules():
                     bg:belongsTo ?actor ;
                     bg:currentInventory ?stock .
 
-                # CRITICAL FIX: OPTIONAL must come BEFORE BIND
-                OPTIONAL { ?metrics bg:inventoryCoverage ?any }
-
                 FILTER(?rate > 0)
                 BIND(xsd:decimal(?stock) / ?rate AS ?coverage)
+                
+                OPTIONAL { ?metrics bg:inventoryCoverage ?any }
             }
         """,
         
@@ -296,17 +295,16 @@ def get_temporal_rules():
                 ?inv a bg:Inventory ;
                     bg:forWeek ?week ;
                     bg:belongsTo ?actor ;
-                    bg:currentInventory ?currentStock .
+                    bg:currentInventory ?currentStock .                         
 
-                # CRITICAL FIX: OPTIONAL must come BEFORE BIND
-                OPTIONAL { ?metrics bg:suggestedOrderQuantity ?oldOrder }
-                         
                 BIND(xsd:decimal(?leadTime + ?reviewPeriod) AS ?totalDelay)
                 BIND(?rate * ?totalDelay AS ?targetStock)
                 BIND(?targetStock - xsd:decimal(?currentStock) AS ?orderQty)
                 
                 # Round up to nearest integer for discrete units
                 BIND(xsd:integer(CEIL(IF(?orderQty > 0, ?orderQty, 0))) AS ?finalOrder)
+
+                OPTIONAL { ?metrics bg:suggestedOrderQuantity ?oldOrder }
             }
         """,
         
@@ -558,16 +556,15 @@ class TemporalBeerGameRuleExecutor:
             return False
     
     def execute_all_rules_for_repository(self, repository, week_number, dry_run=False):
-        """
-        Execute all rules for a specific repository and week
-        FIXED: No longer calls cleanup_duplicate_metrics (preserves historical data)
-        """
+        """Execute all rules for a specific repository and week"""
         print(f"\n{'='*60}")
         print(f"PROCESSING {repository.upper()} - WEEK {week_number}")
         print(f"{'='*60}")
         
-        # FIXED: Removed cleanup_duplicate_metrics() call
-        # This was causing loss of historical metrics
+        # Step 0: Clean ALL metrics for EVERY week (nuclear option)
+        if not dry_run:
+            print(f"→ Cleaning ALL metrics (will recreate)...")
+            self.cleanup_duplicate_metrics(repository)
         
         # Step 1: Ensure Week instance exists
         if not dry_run:
@@ -695,7 +692,7 @@ class TemporalBeerGameRuleExecutor:
 
 def main():
     """Main execution function"""
-    print("🎯 BEER GAME FEDERATED KG - TEMPORAL VERSION (COMPLETE + FIXED)")
+    print("🎯 BEER GAME FEDERATED KG - TEMPORAL VERSION (UPDATED)")
     print("=" * 70)
     print("Features:")
     print("  • ActorMetrics snapshots per week")
@@ -704,8 +701,6 @@ def main():
     print("  • Integer quantities for discrete units")
     print("  • arrivalWeek as bg:Week IRI")
     print("  • SHACL compliant data types")
-    print("  • ✅ FIXED: OPTIONAL before BIND in critical rules")
-    print("  • ✅ FIXED: No cleanup_duplicate_metrics (preserves history)")
     print("=" * 70 + "\n")
     
     executor = TemporalBeerGameRuleExecutor()

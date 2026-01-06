@@ -53,7 +53,7 @@ bg_retailer:Inventory_Week1 a bg:Inventory ;
 # CUSTOMER DEMAND (WEEK 1)
 # ============================================================
 
-bg_retailer:Demand_Week1 a bg:CustomerDemand ;
+bg_retailer:CustomerDemand_Week1 a bg:CustomerDemand ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_retailer:Retailer_Alpha ;
     bg:actualDemand "4"^^xsd:integer ;
@@ -75,7 +75,7 @@ bg_retailer:Order_Week1 a bg:Order ;
 # SHIPMENTS IN PIPELINE
 # ============================================================
 
-bg_retailer:Shipment_Week1_Arriving3 a bg:Shipment ;
+bg_retailer:Shipment_Week1_FromWholesaler a bg:Shipment ;
     bg:forWeek bg:Week_1 ;            #Fix to convert shipment to week-based
     bg:belongsTo bg_retailer:Retailer_Alpha ;
     bg:shippedFrom bg_wholesaler:Wholesaler_Beta ;

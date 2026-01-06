@@ -1,0 +1,177 @@
+{
+  "simulation_info": {
+    "start": "2026-01-05T02:27:53.037713",
+    "end": "2026-01-05T02:28:26.654397",
+    "duration_seconds": 33.616684
+  },
+  "results": [
+    {
+      "week": 1,
+      "timestamp": "2026-01-05T02:27:53.126410",
+      "phases": {
+        "demand": 4,
+        "arrivals": {
+          "Retailer": 0,
+          "Wholesaler": 0,
+          "Distributor": 0,
+          "Factory": 0
+        },
+        "inventories": {
+          "Retailer": {
+            "current": 8,
+            "backlog": 0,
+            "incoming": 0,
+            "outgoing": 4
+          },
+          "Wholesaler": {
+            "current": 12,
+            "backlog": 0,
+            "incoming": 0,
+            "outgoing": 0
+          },
+          "Distributor": {
+            "current": 12,
+            "backlog": 0,
+            "incoming": 0,
+            "outgoing": 0
+          },
+          "Factory": {
+            "current": 12,
+            "backlog": 0,
+            "incoming": 0,
+            "outgoing": 0
+          }
+        },
+        "rules": {
+          "executed": 44,
+          "failed": 0
+        },
+        "orders": {
+          "Retailer": 4,
+          "Wholesaler": 4,
+          "Distributor": 4
+        },
+        "shipments": {
+          "outbound": {
+            "Wholesaler": {
+              "to": "Retailer",
+              "qty": 4,
+              "arrival": 3
+            },
+            "Distributor": {
+              "to": "Wholesaler",
+              "qty": 4,
+              "arrival": 3
+            },
+            "Factory": {
+              "to": "Distributor",
+              "qty": 4,
+              "arrival": 3
+            }
+          },
+          "inbound": {
+            "Retailer": {
+              "from": "Wholesaler",
+              "qty": 4,
+              "arrival": 3
+            },
+            "Wholesaler": {
+              "from": "Distributor",
+              "qty": 4,
+              "arrival": 3
+            },
+            "Distributor": {
+              "from": "Factory",
+              "qty": 4,
+              "arrival": 3
+            }
+          }
+        }
+      }
+    },
+    {
+      "week": 2,
+      "timestamp": "2026-01-05T02:28:10.322528",
+      "phases": {
+        "demand": 4,
+        "arrivals": {
+          "Retailer": 0,
+          "Wholesaler": 0,
+          "Distributor": 0,
+          "Factory": 0
+        },
+        "inventories": {
+          "Retailer": {
+            "current": 8,
+            "backlog": 0,
+            "incoming": 0,
+            "outgoing": 4
+          },
+          "Wholesaler": {
+            "current": 12,
+            "backlog": 0,
+            "incoming": 0,
+            "outgoing": 0
+          },
+          "Distributor": {
+            "current": 12,
+            "backlog": 0,
+            "incoming": 0,
+            "outgoing": 0
+          },
+          "Factory": {
+            "current": 12,
+            "backlog": 0,
+            "incoming": 0,
+            "outgoing": 0
+          }
+        },
+        "rules": {
+          "executed": 44,
+          "failed": 0
+        },
+        "orders": {
+          "Retailer": 4,
+          "Wholesaler": 4,
+          "Distributor": 4
+        },
+        "shipments": {
+          "outbound": {
+            "Wholesaler": {
+              "to": "Retailer",
+              "qty": 4,
+              "arrival": 4
+            },
+            "Distributor": {
+              "to": "Wholesaler",
+              "qty": 4,
+              "arrival": 4
+            },
+            "Factory": {
+              "to": "Distributor",
+              "qty": 4,
+              "arrival": 4
+            }
+          },
+          "inbound": {
+            "Retailer": {
+              "from": "Wholesaler",
+              "qty": 4,
+              "arrival": 4
+            },
+            "Wholesaler": {
+              "from": "Distributor",
+              "qty": 4,
+              "arrival": 4
+            },
+            "Distributor": {
+              "from": "Factory",
+              "qty": 4,
+              "arrival": 4
+            }
+          }
+        }
+      }
+    }
+  ]
+}

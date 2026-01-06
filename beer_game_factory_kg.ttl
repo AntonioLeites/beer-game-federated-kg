@@ -85,7 +85,7 @@ bg_factory:ProductionOrder_Week1 a bg:ProductionOrder ;
 # SHIPMENT TO DISTRIBUTOR
 # ============================================================
 
-bg_factory:Shipment_Week1 a bg:Shipment ;
+bg_factory:Shipment_Week1_ToDistributor a bg:Shipment ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_factory:Factory_Delta ; 
     bg:shippedFrom bg_factory:Factory_Delta ;
