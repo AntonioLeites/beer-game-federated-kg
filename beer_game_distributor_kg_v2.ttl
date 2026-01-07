@@ -1,6 +1,6 @@
 # ============================================================
-# BEER GAME - DISTRIBUTOR KNOWLEDGE GRAPH (TEMPORAL VERSION)
-# Federated endpoint: http://localhost:7200/repositories/BeerGame_Distributor
+# BEER GAME - DISTRIBUTOR KNOWLEDGE GRAPH (TEMPORAL VERSION V2)
+# Federated endpoint: http://localhost:7200/repositories/BG_Distributor
 # ============================================================
 
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
@@ -25,11 +25,10 @@ bg:Week_1 a bg:Week ;
 
 bg_distributor:Distributor_Gamma a bg:Distributor ;
     rdfs:label "Distributor Gamma" ;
-    bg:agentModel "Claude-Sonnet-4"^^xsd:string ;
+    bg:agentModel "Claude-Sonnet-3.5"^^xsd:string ;
     bg:agentPrompt """You are the Distributor in a beer distribution game.
-You supply wholesalers and order from the factory.
-Use federated queries to trace REAL demand back to end customers.
-Apply SWRL rules to detect bullwhip amplification early."""^^xsd:string ;
+Balance supply chain efficiency with responsiveness.
+Use federated queries to access downstream demand patterns."""^^xsd:string ;
     bg:shippingDelay "2"^^xsd:integer ;
     bg:orderDelay "1"^^xsd:integer ;
     bg:suppliesTo bg_wholesaler:Wholesaler_Beta ;
@@ -49,24 +48,25 @@ bg_distributor:Inventory_Week1 a bg:Inventory ;
     bg:incomingShipment "0"^^xsd:integer ;
     bg:outgoingShipment "0"^^xsd:integer ;
     bg:holdingCost "0.50"^^xsd:decimal ;
-    bg:backlogCost "1.00"^^xsd:decimal .
+    bg:backlogCost "1.00"^^xsd:decimal ;
+    rdfs:label "Distributor Gamma Inventory Week 1" .
 
 # ============================================================
 # INCOMING ORDER FROM WHOLESALER (WEEK 1)
 # ============================================================
 
-bg_distributor:ReceivedOrder_Week1 a bg:Order ;
+bg_distributor:Order_Week1_FromWholesaler a bg:Order ;
     bg:forWeek bg:Week_1 ;
-    bg:belongsTo bg_distributor:Distributor_Gamma ;
     bg:placedBy bg_wholesaler:Wholesaler_Beta ;
     bg:receivedBy bg_distributor:Distributor_Gamma ;
-    bg:orderQuantity "4"^^xsd:integer .
+    bg:orderQuantity "4"^^xsd:integer ;
+    rdfs:comment "Wholesaler ordered 4 units" .
 
 # ============================================================
 # DISTRIBUTOR ORDER TO FACTORY (WEEK 1)
 # ============================================================
 
-bg_distributor:Order_Week1 a bg:Order ;
+bg_distributor:Order_Week1_ToFactory a bg:Order ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_distributor:Distributor_Gamma ;
     bg:placedBy bg_distributor:Distributor_Gamma ;
@@ -75,7 +75,7 @@ bg_distributor:Order_Week1 a bg:Order ;
     rdfs:comment "Maintaining stability in the supply chain" .
 
 # ============================================================
-# SHIPMENTS
+# OUTGOING SHIPMENT TO WHOLESALER (WEEK 1)
 # ============================================================
 
 bg_distributor:Shipment_Week1_ToWholesaler a bg:Shipment ;
@@ -84,7 +84,12 @@ bg_distributor:Shipment_Week1_ToWholesaler a bg:Shipment ;
     bg:shippedFrom bg_distributor:Distributor_Gamma ;
     bg:shippedTo bg_wholesaler:Wholesaler_Beta ;
     bg:shippedQuantity "4"^^xsd:integer ;
-    bg:arrivalWeek "3"^^xsd:integer .
+    bg:arrivalWeek "3"^^xsd:integer ;
+    rdfs:comment "Fulfilling wholesaler's order (2-week shipping delay)" .
+
+# ============================================================
+# INCOMING SHIPMENT FROM FACTORY (IN TRANSIT)
+# ============================================================
 
 bg_distributor:Shipment_Week1_FromFactory a bg:Shipment ;
     bg:forWeek bg:Week_1 ;
@@ -92,30 +97,32 @@ bg_distributor:Shipment_Week1_FromFactory a bg:Shipment ;
     bg:shippedFrom bg_factory:Factory_Delta ;
     bg:shippedTo bg_distributor:Distributor_Gamma ;
     bg:shippedQuantity "4"^^xsd:integer ;
-    bg:arrivalWeek "3"^^xsd:integer .
+    bg:arrivalWeek "3"^^xsd:integer ;
+    rdfs:comment "Incoming production from factory (arrives Week 3)" .
 
 # ============================================================
 # ACTOR METRICS (WEEK 1 SNAPSHOT)
 # ============================================================
 
-bg_distributor:Distributor_Metrics_Week1 a bg:ActorMetrics ;
+bg_distributor:Distributor_Gamma_Metrics_W1 a bg:ActorMetrics ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_distributor:Distributor_Gamma ;
     bg:demandRate "4.0"^^xsd:decimal ;
     bg:inventoryCoverage "3.0"^^xsd:decimal ;
+    bg:suggestedOrderQuantity "0"^^xsd:integer ;
     bg:hasBullwhipRisk "false"^^xsd:boolean ;
-    bg:hasStockoutRisk "false"^^xsd:boolean .
+    bg:hasStockoutRisk "false"^^xsd:boolean ;
+    rdfs:label "Distributor Gamma Metrics Week 1" .
 
-bg_distributor:Distributor_Gamma
-    bg:hasMetrics bg_distributor:Metrics_Week1 .
+bg_distributor:Distributor_Gamma bg:hasMetrics bg_distributor:Distributor_Gamma_Metrics_W1 .
 
 # ============================================================
-# DISTRIBUTOR INTERNAL (PRIVATE, NON-FEDERATED)
+# INTERNAL DATA (WEEK 1)
 # ============================================================
 
-bg_distributor:InternalData_Week1 a bg:InternalMetrics ;
+bg_distributor:InternalData_Week1 a bg:InternalData ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_distributor:Distributor_Gamma ;
-    bg:distributorMargin "0.10"^^xsd:decimal ;
-    bg:customerSatisfactionScore "97"^^xsd:integer ;
-    bg:internalNotes "Week 1: Normal operations, no stockouts, stable ordering"^^xsd:string .
+    bg:distributionEfficiency "95"^^xsd:integer ;
+    bg:warehouseUtilization "0.60"^^xsd:decimal ;
+    rdfs:comment "Week 1: Efficient operations, stable demand" .

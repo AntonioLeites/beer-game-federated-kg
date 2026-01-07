@@ -1,6 +1,6 @@
 # ============================================================
-# BEER GAME - FACTORY KNOWLEDGE GRAPH (TEMPORAL VERSION)
-# Federated endpoint: http://localhost:7200/repositories/BeerGame_Factory
+# BEER GAME - FACTORY KNOWLEDGE GRAPH (TEMPORAL VERSION V2)
+# Federated endpoint: http://localhost:7200/repositories/BG_Factory
 # ============================================================
 
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
@@ -24,26 +24,16 @@ bg:Week_1 a bg:Week ;
 
 bg_factory:Factory_Delta a bg:Factory ;
     rdfs:label "Factory Delta" ;
-    bg:agentModel "GPT-5"^^xsd:string ;
-    bg:agentPrompt """You are the Factory in a beer distribution game.
-You are the furthest upstream—you produce beer based on distributor orders.
-Your production decisions affect the entire supply chain.
-Query federated KGs to see TOTAL supply chain demand, not just your immediate orders.
-Smooth production to avoid bullwhip amplification."""^^xsd:string ;
+    bg:agentModel "GPT-4-Turbo"^^xsd:string ;
+    bg:agentPrompt """You are the Factory (upstream producer) in a beer distribution game.
+You receive orders from the Distributor. Production takes 2 weeks.
+Optimize for stable production schedules and minimal changeover costs."""^^xsd:string ;
     bg:shippingDelay "2"^^xsd:integer ;
-    bg:orderDelay "1"^^xsd:integer ;
+    bg:orderDelay "0"^^xsd:integer ;
+    bg:productionDelay "2"^^xsd:integer ;
     bg:suppliesTo bg_distributor:Distributor_Gamma ;
-    bg:budgetConstraint "50000.00"^^xsd:decimal ;
+    bg:budgetConstraint "30000.00"^^xsd:decimal ;
     bg:totalCost "0.00"^^xsd:decimal .
-
-# ============================================================
-# PRODUCTION CAPACITY
-# ============================================================
-
-bg_factory:ProductionCapacity a bg:ProductionLine ;
-    bg:maxProductionRate "100"^^xsd:integer ;
-    bg:currentProductionRate "4"^^xsd:integer ;
-    rdfs:label "Beer Production Line" .
 
 # ============================================================
 # INVENTORY STATE (WEEK 1)
@@ -57,65 +47,68 @@ bg_factory:Inventory_Week1 a bg:Inventory ;
     bg:incomingShipment "0"^^xsd:integer ;
     bg:outgoingShipment "0"^^xsd:integer ;
     bg:holdingCost "0.50"^^xsd:decimal ;
-    bg:backlogCost "1.00"^^xsd:decimal .
+    bg:backlogCost "1.00"^^xsd:decimal ;
+    rdfs:label "Factory Delta Inventory Week 1" .
 
 # ============================================================
 # INCOMING ORDER FROM DISTRIBUTOR (WEEK 1)
 # ============================================================
 
-bg_factory:ReceivedOrder_Week1 a bg:Order ;
+bg_factory:Order_Week1_FromDistributor a bg:Order ;
     bg:forWeek bg:Week_1 ;
-    bg:belongsTo bg_factory:Factory_Delta ;
     bg:placedBy bg_distributor:Distributor_Gamma ;
     bg:receivedBy bg_factory:Factory_Delta ;
-    bg:orderQuantity "4"^^xsd:integer .
+    bg:orderQuantity "4"^^xsd:integer ;
+    rdfs:comment "Distributor ordered 4 units" .
 
 # ============================================================
-# PRODUCTION DECISION (WEEK 1)
+# PRODUCTION ORDER (WEEK 1)
 # ============================================================
 
 bg_factory:ProductionOrder_Week1 a bg:ProductionOrder ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_factory:Factory_Delta ;
-    bg:producedQuantity "4"^^xsd:integer ;
-    bg:completionWeek "2"^^xsd:integer ;
-    rdfs:comment "Produce to match current demand" .
+    bg:productionQuantity "4"^^xsd:integer ;
+    bg:completionWeek "3"^^xsd:integer ;
+    rdfs:comment "Production batch to complete in Week 3 (2-week production delay)" .
 
 # ============================================================
-# SHIPMENT TO DISTRIBUTOR
+# OUTGOING SHIPMENT TO DISTRIBUTOR (WEEK 1)
 # ============================================================
 
 bg_factory:Shipment_Week1_ToDistributor a bg:Shipment ;
     bg:forWeek bg:Week_1 ;
-    bg:belongsTo bg_factory:Factory_Delta ; 
+    bg:belongsTo bg_factory:Factory_Delta ;
     bg:shippedFrom bg_factory:Factory_Delta ;
     bg:shippedTo bg_distributor:Distributor_Gamma ;
     bg:shippedQuantity "4"^^xsd:integer ;
-    bg:arrivalWeek "3"^^xsd:integer .
+    bg:arrivalWeek "3"^^xsd:integer ;
+    rdfs:comment "Fulfilling distributor's previous order (2-week shipping delay)" .
 
 # ============================================================
 # ACTOR METRICS (WEEK 1 SNAPSHOT)
 # ============================================================
 
-bg_factory:Factory_Metrics_Week1 a bg:ActorMetrics ;
+bg_factory:Factory_Delta_Metrics_W1 a bg:ActorMetrics ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_factory:Factory_Delta ;
     bg:demandRate "4.0"^^xsd:decimal ;
     bg:inventoryCoverage "3.0"^^xsd:decimal ;
+    bg:suggestedOrderQuantity "0"^^xsd:integer ;
     bg:hasBullwhipRisk "false"^^xsd:boolean ;
-    bg:hasStockoutRisk "false"^^xsd:boolean .
+    bg:hasStockoutRisk "false"^^xsd:boolean ;
+    rdfs:label "Factory Delta Metrics Week 1" .
 
-bg_factory:Factory_Delta
-    bg:hasMetrics bg_factory:Metrics_Week1 .
+bg_factory:Factory_Delta bg:hasMetrics bg_factory:Factory_Delta_Metrics_W1 .
 
 # ============================================================
-# RAW MATERIALS (FACTORY-SPECIFIC)
+# INTERNAL DATA (WEEK 1)
 # ============================================================
 
-bg_factory:RawMaterials_Week1 a bg:RawMaterials ;
+bg_factory:InternalData_Week1 a bg:InternalData ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_factory:Factory_Delta ;
-    bg:hopsInventory "500"^^xsd:integer ;
-    bg:maltInventory "800"^^xsd:integer ;
-    bg:yeastInventory "200"^^xsd:integer ;
-    rdfs:comment "Sufficient materials for 100+ weeks" .
+    bg:productionCapacity "100"^^xsd:integer ;
+    bg:productionEfficiency "0.92"^^xsd:decimal ;
+    bg:machineUtilization "0.35"^^xsd:decimal ;
+    rdfs:comment "Week 1: Low utilization, stable production" .

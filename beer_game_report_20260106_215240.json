@@ -1,0 +1,48 @@
+{
+  "simulation_date": "2026-01-06T21:52:40.439036",
+  "weeks_simulated": 1,
+  "demand_pattern": "stable",
+  "weeks": [
+    {
+      "week": 1,
+      "demand": 4,
+      "summary": {
+        "Retailer": {
+          "inventory": 12,
+          "backlog": 0,
+          "coverage": 3.0,
+          "suggested_order": 0,
+          "total_cost": 6.0
+        },
+        "Wholesaler": {
+          "inventory": 4,
+          "backlog": 0,
+          "coverage": 1.0,
+          "suggested_order": 8,
+          "total_cost": 2.0
+        },
+        "Distributor": {
+          "inventory": 4,
+          "backlog": 0,
+          "coverage": 1.0,
+          "suggested_order": 8,
+          "total_cost": 2.0
+        },
+        "Factory": {
+          "inventory": 4,
+          "backlog": 0,
+          "coverage": 1.0,
+          "suggested_order": 4,
+          "total_cost": 2.0
+        }
+      },
+      "demand_pattern": "stable"
+    }
+  ],
+  "final_costs": {
+    "Retailer": 6.0,
+    "Wholesaler": 2.0,
+    "Distributor": 2.0,
+    "Factory": 2.0
+  }
+}

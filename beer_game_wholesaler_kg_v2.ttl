@@ -1,6 +1,6 @@
 # ============================================================
-# BEER GAME - WHOLESALER KNOWLEDGE GRAPH (TEMPORAL VERSION)
-# Federated endpoint: http://localhost:7200/repositories/BeerGame_Wholesaler
+# BEER GAME - WHOLESALER KNOWLEDGE GRAPH (TEMPORAL VERSION V2)
+# Federated endpoint: http://localhost:7200/repositories/BG_Wholesaler
 # ============================================================
 
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
@@ -10,6 +10,16 @@
 @prefix bg_retailer: <http://beergame.org/retailer#> .
 @prefix bg_wholesaler: <http://beergame.org/wholesaler#> .
 @prefix bg_distributor: <http://beergame.org/distributor#> .
+
+# ============================================================
+# NAMING CONVENTIONS
+# ============================================================
+# Inventory: Inventory_Week{N}
+# Orders (outgoing): Order_Week{N}_To{Upstream}
+# Orders (incoming): Order_Week{N}_From{Downstream}
+# Shipments: Shipment_Week{N}_To{Destination} / Shipment_Week{N}_From{Source}
+# Metrics: {Actor}_Metrics_W{N}
+# ============================================================
 
 # ============================================================
 # TIME DIMENSION
@@ -49,13 +59,14 @@ bg_wholesaler:Inventory_Week1 a bg:Inventory ;
     bg:incomingShipment "0"^^xsd:integer ;
     bg:outgoingShipment "0"^^xsd:integer ;
     bg:holdingCost "0.50"^^xsd:decimal ;
-    bg:backlogCost "1.00"^^xsd:decimal .
+    bg:backlogCost "1.00"^^xsd:decimal ;
+    rdfs:label "Wholesaler Beta Inventory Week 1" .
 
 # ============================================================
 # INCOMING ORDER FROM RETAILER (WEEK 1)
 # ============================================================
 
-bg_wholesaler:ReceivedOrder_Week1 a bg:Order ;
+bg_wholesaler:Order_Week1_FromRetailer a bg:Order ;
     bg:forWeek bg:Week_1 ;
     bg:placedBy bg_retailer:Retailer_Alpha ;
     bg:receivedBy bg_wholesaler:Wholesaler_Beta ;
@@ -66,7 +77,7 @@ bg_wholesaler:ReceivedOrder_Week1 a bg:Order ;
 # WHOLESALER ORDER TO DISTRIBUTOR (WEEK 1)
 # ============================================================
 
-bg_wholesaler:Order_Week1 a bg:Order ;
+bg_wholesaler:Order_Week1_ToDistributor a bg:Order ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_wholesaler:Wholesaler_Beta ;
     bg:placedBy bg_wholesaler:Wholesaler_Beta ;
@@ -75,7 +86,7 @@ bg_wholesaler:Order_Week1 a bg:Order ;
     rdfs:comment "Conservative ordering strategy" .
 
 # ============================================================
-# SHIPMENTS
+# OUTGOING SHIPMENT TO RETAILER (WEEK 1)
 # ============================================================
 
 bg_wholesaler:Shipment_Week1_ToRetailer a bg:Shipment ;
@@ -85,7 +96,11 @@ bg_wholesaler:Shipment_Week1_ToRetailer a bg:Shipment ;
     bg:shippedTo bg_retailer:Retailer_Alpha ;
     bg:shippedQuantity "4"^^xsd:integer ;
     bg:arrivalWeek "3"^^xsd:integer ;
-    rdfs:comment "Fulfilling retailer's order from 2 weeks ago" .
+    rdfs:comment "Fulfilling retailer's order from 2 weeks ago (2-week shipping delay)" .
+
+# ============================================================
+# INCOMING SHIPMENT FROM DISTRIBUTOR (IN TRANSIT)
+# ============================================================
 
 bg_wholesaler:Shipment_Week1_FromDistributor a bg:Shipment ;
     bg:forWeek bg:Week_1 ;
@@ -94,7 +109,7 @@ bg_wholesaler:Shipment_Week1_FromDistributor a bg:Shipment ;
     bg:shippedTo bg_wholesaler:Wholesaler_Beta ;
     bg:shippedQuantity "4"^^xsd:integer ;
     bg:arrivalWeek "3"^^xsd:integer ;
-    rdfs:comment "Incoming supply from distributor" .
+    rdfs:comment "Incoming supply from distributor (arrives Week 3)" .
 
 # ============================================================
 # ACTOR METRICS (WEEK 1 SNAPSHOT)
@@ -105,17 +120,18 @@ bg_wholesaler:Wholesaler_Beta_Metrics_W1 a bg:ActorMetrics ;
     bg:belongsTo bg_wholesaler:Wholesaler_Beta ;
     bg:demandRate "4.0"^^xsd:decimal ;
     bg:inventoryCoverage "3.0"^^xsd:decimal ;
+    bg:suggestedOrderQuantity "0"^^xsd:integer ;
     bg:hasBullwhipRisk "false"^^xsd:boolean ;
-    bg:hasStockoutRisk "false"^^xsd:boolean .
+    bg:hasStockoutRisk "false"^^xsd:boolean ;
+    rdfs:label "Wholesaler Beta Metrics Week 1" .
 
-bg_wholesaler:Wholesaler_Beta
-    bg:hasMetrics bg_wholesaler:Wholesaler_Beta_Metrics_W1 .
+bg_wholesaler:Wholesaler_Beta bg:hasMetrics bg_wholesaler:Wholesaler_Beta_Metrics_W1 .
 
 # ============================================================
-# WHOLESALER INTERNAL (PRIVATE, NON-FEDERATED)
+# WHOLESALER INTERNAL DATA (PRIVATE, NON-FEDERATED)
 # ============================================================
 
-bg_wholesaler:InternalData_Week1 a bg:InternalMetrics ;
+bg_wholesaler:InternalData_Week1 a bg:InternalData ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_wholesaler:Wholesaler_Beta ;
     bg:wholesaleMargin "0.15"^^xsd:decimal ;

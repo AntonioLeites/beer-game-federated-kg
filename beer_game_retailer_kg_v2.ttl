@@ -1,10 +1,19 @@
-@prefix : <file:///Users/antonio/Documents/Herramientas%20SAP/KG/Federated_KGs/SCM/Beer-Game/beer-game-federated-kg/beer_game_retailer_kg.ttl#> .
+@prefix : <file:///beer-game-federated-kg/beer_game_retailer_kg.ttl#> .
 @prefix bg: <http://beergame.org/ontology#> .
 @prefix bg_retailer: <http://beergame.org/retailer#> .
 @prefix bg_wholesaler: <http://beergame.org/wholesaler#> .
 @prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# ============================================================
+# NAMING CONVENTIONS
+# ============================================================
+# Inventory: Inventory_Week{N}
+# Orders: Order_Week{N}_To{Upstream}
+# Shipments: Shipment_Week{N}_From{Source} / Shipment_Week{N}_To{Destination}
+# Metrics: {Actor}_Metrics_W{N}
+# ============================================================
 
 # ============================================================
 # TIME DIMENSION
@@ -38,12 +47,13 @@ Make ordering decisions based on actual customer demand, not panic."""^^xsd:stri
 bg_retailer:Inventory_Week1 a bg:Inventory ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_retailer:Retailer_Alpha ;
-    bg:currentInventory "12"^^xsd:integer ;     # Initial Beer Game inventory
+    bg:currentInventory "12"^^xsd:integer ;    # Initial Beer Game inventory
     bg:backlog "0"^^xsd:integer ;
     bg:incomingShipment "0"^^xsd:integer ;
     bg:outgoingShipment "0"^^xsd:integer ;
     bg:holdingCost "0.50"^^xsd:decimal ;
-    bg:backlogCost "1.00"^^xsd:decimal .
+    bg:backlogCost "1.00"^^xsd:decimal ;
+    rdfs:label "Retailer Alpha Inventory Week 1" .
 
 # ============================================================
 # CUSTOMER DEMAND (WEEK 1)
@@ -56,10 +66,10 @@ bg_retailer:CustomerDemand_Week1 a bg:CustomerDemand ;
     rdfs:comment "Initial steady demand from end customers" .
 
 # ============================================================
-# RETAILER ORDER (WEEK 1)
+# RETAILER ORDER TO WHOLESALER (WEEK 1)
 # ============================================================
 
-bg_retailer:Order_Week1 a bg:Order ;
+bg_retailer:Order_Week1_ToWholesaler a bg:Order ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_retailer:Retailer_Alpha ;
     bg:placedBy bg_retailer:Retailer_Alpha ;
@@ -68,42 +78,41 @@ bg_retailer:Order_Week1 a bg:Order ;
     rdfs:comment "Initial order matches customer demand" .
 
 # ============================================================
-# SHIPMENTS IN PIPELINE
+# INCOMING SHIPMENT FROM WHOLESALER (IN TRANSIT)
 # ============================================================
 
 bg_retailer:Shipment_Week1_FromWholesaler a bg:Shipment ;
-    bg:forWeek bg:Week_1 ;            #Fix to convert shipment to week-based
+    bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_retailer:Retailer_Alpha ;
     bg:shippedFrom bg_wholesaler:Wholesaler_Beta ;
     bg:shippedTo bg_retailer:Retailer_Alpha ;
     bg:shippedQuantity "4"^^xsd:integer ;
     bg:arrivalWeek "3"^^xsd:integer ;
-    rdfs:comment "Shipment in transit from wholesaler (2-week delay)" .
+    rdfs:comment "Shipment in transit from wholesaler (arrives Week 3, 2-week delay)" .
 
 # ============================================================
 # ACTOR METRICS (WEEK 1 SNAPSHOT)
 # ============================================================
 
-
 bg_retailer:Retailer_Alpha_Metrics_W1 a bg:ActorMetrics ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_retailer:Retailer_Alpha ;
     bg:demandRate "4.0"^^xsd:decimal ;
-    bg:inventoryCoverage "3.0"^^xsd:decimal ;   # 12 / 4 = 3 weeks
+    bg:inventoryCoverage "3.0"^^xsd:decimal ;
+    bg:suggestedOrderQuantity "0"^^xsd:integer ;
     bg:hasBullwhipRisk "false"^^xsd:boolean ;
     bg:hasStockoutRisk "false"^^xsd:boolean ;
-    rdfs:label "Retailer Metrics Week 1" .
+    rdfs:label "Retailer Alpha Metrics Week 1" .
 
-bg_retailer:Retailer_Alpha
-    bg:hasMetrics bg_retailer:Retailer_Alpha_Metrics_W1 .
+bg_retailer:Retailer_Alpha bg:hasMetrics bg_retailer:Retailer_Alpha_Metrics_W1 .
 
 # ============================================================
-# RETAILER INTERNAL (PRIVATE, NON-FEDERATED)
+# INTERNAL DATA (WEEK 1)
 # ============================================================
 
-bg_retailer:InternalData_Week1 a bg:InternalMetrics ;
+bg_retailer:InternalData_Week1 a bg:InternalData ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_retailer:Retailer_Alpha ;
-    bg:retailMargin "0.25"^^xsd:decimal ;
-    bg:customerSatisfactionScore "95"^^xsd:integer ;
-    bg:internalNotes "Week 1: Normal operations, conservative ordering"^^xsd:string .
+    bg:totalRevenue "0.00"^^xsd:decimal ;
+    bg:totalOrders "1"^^xsd:integer ;
+    rdfs:comment "Internal tracking data for Week 1" .
