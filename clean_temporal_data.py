@@ -64,12 +64,16 @@ def clean_repository(repo_name, repo_id):
         }
         WHERE {
             ?shipment a bg:Shipment .
-            FILTER(!CONTAINS(STR(?shipment), "Week1") && !CONTAINS(STR(?shipment), "Week_1"))
+            
+            # Use regex - handles both "Week_10" and "Week10" formats
+            FILTER(
+                REGEX(STR(?shipment), "(Week_([2-9]|[1-9][0-9]+)|Week([2-9]|[1-9][0-9]+))")
+            )
             
             ?shipment ?p ?o .
         }
     """
-    execute_update(repo_id, query2, "Delete Shipments (not Week 1)")
+    execute_update(repo_id, query2, "Delete Shipments (Week > 1)")
     
     # 3. Delete ALL Orders except Week_1
     query3 = """
@@ -80,12 +84,16 @@ def clean_repository(repo_name, repo_id):
         }
         WHERE {
             ?order a bg:Order .
-            FILTER(!CONTAINS(STR(?order), "Week1") && !CONTAINS(STR(?order), "Week_1"))
+            
+            # Use regex - handles both "Week_10" and "Week10" formats
+            FILTER(
+                REGEX(STR(?order), "(Week_([2-9]|[1-9][0-9]+)|Week([2-9]|[1-9][0-9]+))")
+            )
             
             ?order ?p ?o .
         }
     """
-    execute_update(repo_id, query3, "Delete Orders (not Week 1)")
+    execute_update(repo_id, query3, "Delete Orders (Week > 1)")
     
     # 4. Delete Week entities except Week_1
     query4 = """
@@ -96,12 +104,17 @@ def clean_repository(repo_name, repo_id):
         }
         WHERE {
             ?week a bg:Week .
-            FILTER(!CONTAINS(STR(?week), "Week_1"))
+            
+            # Use regex to match Week_N where N > 1
+            # Handles both weeks with and without weekNumber property
+            FILTER(
+                REGEX(STR(?week), "Week_([2-9]|[1-9][0-9]+)$")
+            )
             
             ?week ?p ?o .
         }
     """
-    execute_update(repo_id, query4, "Delete Week entities (not Week_1)")
+    execute_update(repo_id, query4, "Delete Week entities (Week > 1)")
     
     # 5. Delete CustomerDemand except Week 1
     query5 = """
@@ -112,12 +125,16 @@ def clean_repository(repo_name, repo_id):
         }
         WHERE {
             ?demand a bg:CustomerDemand .
-            FILTER(!CONTAINS(STR(?demand), "Week1") && !CONTAINS(STR(?demand), "Week_1"))
+            
+            # Use regex
+            FILTER(
+                REGEX(STR(?demand), "(Week_([2-9]|[1-9][0-9]+)|Week([2-9]|[1-9][0-9]+))")
+            )
             
             ?demand ?p ?o .
         }
     """
-    execute_update(repo_id, query5, "Delete CustomerDemand (not Week 1)")
+    execute_update(repo_id, query5, "Delete CustomerDemand (Week > 1)")
     
     # 6. Clean duplicate Inventory values
     query6 = """
@@ -161,12 +178,16 @@ def clean_repository(repo_name, repo_id):
         }
         WHERE {
             ?inv a bg:Inventory .
-            FILTER(!CONTAINS(STR(?inv), "Week1") && !CONTAINS(STR(?inv), "Week_1"))
+            
+            # Use regex to match Inventory for Week > 1
+            FILTER(
+                REGEX(STR(?inv), "(Week_([2-9]|[1-9][0-9]+)|Week([2-9]|[1-9][0-9]+))")
+            )
             
             ?inv ?p ?o .
         }
     """
-    execute_update(repo_id, query7, "Delete Inventory (not Week 1)")
+    execute_update(repo_id, query7, "Delete Inventory (Week > 1)")
     
     print(f"✅ {repo_name} cleaned successfully")
 

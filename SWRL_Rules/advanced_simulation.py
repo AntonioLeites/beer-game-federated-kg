@@ -1,353 +1,200 @@
 """
-Beer Game Federated KG - Dynamic Simulation Engine (FINAL FIX)
-Simulates the complete beer game dynamics: demand, orders, shipments, inventory updates
+Beer Game Simulation Orchestrator (Clean Architecture)
 
-CRITICAL FIXES:
-1. Outbound shipments based on RECEIVED orders (not current week orders)
-2. Proper Week entity creation before use
-3. No deletion of existing metrics
-4. Correct temporal sequencing
+Design Philosophy:
+- Orchestrator ONLY generates external events (customer demand)
+- Orchestrator creates temporal anchors (Week entities)
+- ALL business logic is delegated to SPARQL rules
+- Orchestrator reads results computed by rules
+
+Separation of Concerns:
+- This file: Events, Time, Orchestration
+- temporal_beer_game_rules.py: Logic, Decisions, Metrics
 """
 
-import time
-import json
-import random
 import requests
-from datetime import datetime
-
-# Import from the correct file - temporal_beer_game_rules.py
-try:
-    from temporal_beer_game_rules import TemporalBeerGameRuleExecutor
-    print("✓ Imported TemporalBeerGameRuleExecutor from temporal_beer_game_rules.py")
-except ImportError:
-    print("✗ Could not import from temporal_beer_game_rules.py")
-    print("  Make sure temporal_beer_game_rules.py is in the same directory")
-    raise
+import random
+import time
+from temporal_beer_game_rules_v2 import TemporalBeerGameRuleExecutor
 
 
-class BeerGameDynamicSimulation:
+class BeerGameOrchestrator:
     """
-    Complete Beer Game simulation with proper temporal semantics
+    Orchestrates Beer Game simulation by:
+    1. Creating temporal structure (Week entities)
+    2. Generating exogenous events (customer demand)
+    3. Executing business rules
+    4. Reporting results
+    
+    Does NOT:
+    - Calculate inventory
+    - Make ordering decisions
+    - Compute metrics
+    - Create shipments/orders (rules do this)
     """
     
-    def __init__(self, graphdb_url="http://localhost:7200"):
-        self.graphdb_url = graphdb_url
-        self.rule_executor = TemporalBeerGameRuleExecutor(graphdb_url)
+    def __init__(self, base_url="http://localhost:7200"):
+        self.base_url = base_url
         self.session = requests.Session()
         
-        # Supply chain configuration (upstream flow)
+        # Supply chain configuration
         self.supply_chain = {
             "Retailer": {
-                "repo": "BG_Retailer",
-                "uri": "bg_retailer:Retailer_Alpha",
+                "uri": "http://beergame.org/retailer#Retailer_Alpha",
                 "namespace": "bg_retailer",
-                "upstream_actor": "Wholesaler",
-                "upstream_uri": "bg_wholesaler:Wholesaler_Beta"
+                "repo": "BG_Retailer"
             },
             "Wholesaler": {
-                "repo": "BG_Wholesaler",
-                "uri": "bg_wholesaler:Wholesaler_Beta",
+                "uri": "http://beergame.org/wholesaler#Wholesaler_Beta",
                 "namespace": "bg_wholesaler",
-                "upstream_actor": "Distributor",
-                "upstream_uri": "bg_distributor:Distributor_Gamma"
+                "repo": "BG_Wholesaler"
             },
             "Distributor": {
-                "repo": "BG_Distributor",
-                "uri": "bg_distributor:Distributor_Gamma",
+                "uri": "http://beergame.org/distributor#Distributor_Gamma",
                 "namespace": "bg_distributor",
-                "upstream_actor": "Factory",
-                "upstream_uri": "bg_factory:Factory_Delta"
+                "repo": "BG_Distributor"
             },
             "Factory": {
-                "repo": "BG_Factory",
-                "uri": "bg_factory:Factory_Delta",
+                "uri": "http://beergame.org/factory#Factory_Delta",
                 "namespace": "bg_factory",
-                "upstream_actor": None,
-                "upstream_uri": None
+                "repo": "BG_Factory"
             }
         }
         
+        # Rule executor
+        self.rule_executor = TemporalBeerGameRuleExecutor(base_url)
+        
+        # Results tracking
         self.results = []
-        self.start_time = None
-        
-    def run_simulation(self, weeks=4, demand_pattern="stable"):
-        """Run complete simulation"""
-        self.start_time = datetime.now()
-        
-        print(f"\n{'='*80}")
-        print(f"🎮 BEER GAME DYNAMIC SIMULATION (FINAL)")
-        print(f"{'='*80}")
-        print(f"   Start: {self.start_time.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"   Weeks: {weeks}")
-        print(f"   Demand pattern: {demand_pattern}")
-        print(f"{'='*80}\n")
-        
-        for week in range(1, weeks + 1):
-            print(f"\n{'#'*80}")
-            print(f"📅 WEEK {week} - SIMULATION STEP")
-            print(f"{'#'*80}")
-            
-            # CRITICAL: Create Week entity first
-            self.create_week_entity(week)
-            
-            week_result = self.simulate_week(week, demand_pattern)
-            self.results.append(week_result)
-            
-            time.sleep(1)
-        
-        self.generate_report()
     
-    def create_week_entity(self, week):
-        """Create bg:Week entity if it doesn't exist"""
-        for actor_name, config in self.supply_chain.items():
-            # Check if week exists
-            query = f"""
-                PREFIX bg: <http://beergame.org/ontology#>
-                ASK WHERE {{ bg:Week_{week} a bg:Week }}
-            """
+    def _execute_query(self, query, repository):
+        """Execute SPARQL SELECT query"""
+        endpoint = f"{self.base_url}/repositories/{repository}"
+        headers = {"Accept": "application/sparql-results+json"}
+        
+        try:
+            response = self.session.post(
+                endpoint,
+                data={"query": query},
+                headers=headers,
+                timeout=30
+            )
             
-            result = self._execute_query(query, config['repo'])
-            exists = result.get("boolean", False)
-            
-            if not exists:
-                # Create week entity
-                update = f"""
-                    PREFIX bg: <http://beergame.org/ontology#>
-                    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-                    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-                    
-                    INSERT {{
-                        bg:Week_{week} a bg:Week ;
-                            bg:weekNumber "{week}"^^xsd:integer ;
-                            rdfs:label "Week {week}" .
-                    }}
-                    WHERE {{}}
-                """
-                self._execute_update(update, config['repo'])
-                print(f"   ✓ Created Week_{week} entity in {actor_name}")
-                break  # Only need to create once
+            if response.status_code == 200:
+                return response.json()
+            else:
+                print(f"Query error: {response.status_code}")
+                return {}
+        except Exception as e:
+            print(f"Query exception: {e}")
+            return {}
     
-    def simulate_week(self, week, demand_pattern):
-        """Simulate one complete week"""
-        result = {
-            "week": week,
-            "timestamp": datetime.now().isoformat(),
-            "phases": {}
-        }
+    def _execute_update(self, update, repository):
+        """Execute SPARQL UPDATE query"""
+        endpoint = f"{self.base_url}/repositories/{repository}/statements"
+        headers = {"Content-Type": "application/sparql-update"}
         
-        # PHASE 1: Generate customer demand
-        print(f"\n→ Phase 1: Generating customer demand...")
-        demand = self.generate_customer_demand(week, demand_pattern)
-        result["phases"]["demand"] = demand
-        print(f"   Customer demand: {demand} units")
-        
-        # PHASE 2: Process shipment arrivals
-        print(f"\n→ Phase 2: Processing shipment arrivals...")
-        arrivals = self.process_shipment_arrivals(week)
-        result["phases"]["arrivals"] = arrivals
-        
-        # PHASE 3: Update inventories
-        print(f"\n→ Phase 3: Updating inventories...")
-        inventories = self.update_inventories(week, demand, arrivals)
-        result["phases"]["inventories"] = inventories
-        
-        # PHASE 4: Execute rules (WITHOUT dry_run to actually create metrics)
-        print(f"\n→ Phase 4: Executing business rules...")
-        executed, failed = self.rule_executor.execute_federated_week_simulation(
-            week, dry_run=False
-        )
-        result["phases"]["rules"] = {"executed": executed, "failed": failed}
-        
-        # PHASE 5: Make ordering decisions
-        print(f"\n→ Phase 5: Processing orders...")
-        orders = self.process_orders(week)
-        result["phases"]["orders"] = orders
-        
-        # PHASE 6: Create shipments
-        print(f"\n→ Phase 6: Creating shipments...")
-        shipments = self.create_shipments_fixed(week)
-        result["phases"]["shipments"] = shipments
-        
-        return result
+        try:
+            response = self.session.post(
+                endpoint,
+                data=update,
+                headers=headers,
+                timeout=30
+            )
+            return response.status_code == 204
+        except Exception as e:
+            print(f"Update exception: {e}")
+            return False
     
-    def generate_customer_demand(self, week, pattern="stable"):
-        """Generate customer demand for retailer"""
-        base_demand = 4
+    # NOTE: create_week_entity, create_actor_metrics_snapshot, and
+    # create_inventory_snapshot are now called from rule_executor
+    # This maintains separation: orchestrator delegates structure creation
+    # to the executor's utility methods
+    
+    def generate_customer_demand(self, week, demand_pattern="stable"):
+        """
+        Generate customer demand (exogenous event)
         
-        if pattern == "stable":
-            demand = base_demand
-        elif pattern == "spike":
-            demand = base_demand if week != 3 else 12
-        elif pattern == "increasing":
-            demand = base_demand + (week - 1)
-        elif pattern == "random":
+        This is the ONLY thing the orchestrator generates
+        Everything else is computed by rules
+        """
+        print(f"   Generating customer demand for Week_{week}...")
+        
+        # Demand patterns
+        if demand_pattern == "stable":
+            demand = 4
+        elif demand_pattern == "spike":
+            demand = 12 if week == 3 else 4
+        elif demand_pattern == "increasing":
+            demand = 4 + (week - 1)
+        elif demand_pattern == "random":
             demand = random.randint(2, 8)
         else:
-            demand = base_demand
+            demand = 4
         
+        # Create CustomerDemand entity (only for Retailer)
         config = self.supply_chain["Retailer"]
-        actor_namespace_uri = f"http://beergame.org/{config['namespace'].replace('bg_', '')}#"
         
         update = f"""
             PREFIX bg: <http://beergame.org/ontology#>
             PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-            PREFIX {config['namespace']}: <{actor_namespace_uri}>
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX {config['namespace']}: <http://beergame.org/{config['namespace'].replace('bg_', '')}#>
             
             INSERT {{
                 {config['namespace']}:CustomerDemand_Week{week} a bg:CustomerDemand ;
                     bg:forWeek bg:Week_{week} ;
+                    bg:belongsTo {config['uri']} ;
                     bg:actualDemand "{demand}"^^xsd:integer ;
-                    bg:demandPattern "{pattern}"^^xsd:string .
+                    rdfs:comment "Customer demand for Week {week}" .
             }}
-            WHERE {{}}
+            WHERE {{
+                FILTER NOT EXISTS {{
+                    {config['namespace']}:CustomerDemand_Week{week} a bg:CustomerDemand .
+                }}
+            }}
         """
+        
         self._execute_update(update, config['repo'])
+        print(f"      Customer demand: {demand} units")
+        
         return demand
     
-    def process_shipment_arrivals(self, week):
-        """Check for inbound shipments arriving this week"""
-        arrivals = {}
+    def get_week_summary(self, week):
+        """Read results computed by rules"""
+        print(f"\n📊 WEEK {week} SUMMARY:")
+        print("="*60)
+        
+        summary = {}
         
         for actor_name, config in self.supply_chain.items():
             query = f"""
                 PREFIX bg: <http://beergame.org/ontology#>
-                SELECT ?shipment ?qty WHERE {{
-                    ?shipment a bg:Shipment ;
-                        bg:shippedTo {config['uri']} ;
-                        bg:arrivalWeek bg:Week_{week} ;
-                        bg:quantity ?qty .
-                }}
-            """
-            
-            result = self._execute_query(query, config['repo'])
-            bindings = result.get("results", {}).get("bindings", [])
-            
-            total_arriving = sum(int(b["qty"]["value"]) for b in bindings)
-            arrivals[actor_name] = total_arriving
-            
-            if total_arriving > 0:
-                print(f"   {actor_name}: receiving {total_arriving} units")
-        
-        return arrivals
-    
-    def update_inventories(self, week, customer_demand, arrivals):
-        """Update inventory levels for all actors"""
-        inventories = {}
-        
-        for actor_name, config in self.supply_chain.items():
-            # Get previous inventory
-            if week == 1:
-                prev_inv = 12
-                prev_backlog = 0
-            else:
-                query = f"""
-                    PREFIX bg: <http://beergame.org/ontology#>
-                    SELECT ?inv ?backlog WHERE {{
-                        ?inventory a bg:Inventory ;
-                            bg:forWeek bg:Week_{week - 1} ;
-                            bg:belongsTo {config['uri']} ;
-                            bg:currentInventory ?inv ;
-                            bg:backlog ?backlog .
+                PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                
+                SELECT ?inv ?backlog ?coverage ?suggested ?cost
+                WHERE {{
+                    # Get inventory
+                    OPTIONAL {{
+                        ?invEntity a bg:Inventory ;
+                                   bg:forWeek bg:Week_{week} ;
+                                   bg:belongsTo <{config['uri']}> ;
+                                   bg:currentInventory ?inv ;
+                                   bg:backlog ?backlog .
                     }}
-                """
-                
-                result = self._execute_query(query, config['repo'])
-                bindings = result.get("results", {}).get("bindings", [])
-                
-                if bindings:
-                    prev_inv = int(bindings[0]["inv"]["value"])
-                    prev_backlog = int(bindings[0]["backlog"]["value"])
-                else:
-                    prev_inv = 12
-                    prev_backlog = 0
-            
-            # Calculate demand
-            if actor_name == "Retailer":
-                demand_this_week = customer_demand
-            else:
-                # Query orders received from downstream
-                demand_query = f"""
-                    PREFIX bg: <http://beergame.org/ontology#>
-                    SELECT (SUM(?qty) as ?total) WHERE {{
-                        ?order a bg:Order ;
-                            bg:forWeek bg:Week_{week} ;
-                            bg:receivedBy {config['uri']} ;
-                            bg:orderQuantity ?qty .
+                    
+                    # Get metrics
+                    OPTIONAL {{
+                        <{config['uri']}> bg:hasMetrics ?metrics .
+                        ?metrics bg:forWeek bg:Week_{week} ;
+                                 bg:inventoryCoverage ?coverage ;
+                                 bg:suggestedOrderQuantity ?suggested .
                     }}
-                """
-                order_result = self._execute_query(demand_query, config['repo'])
-                order_bindings = order_result.get("results", {}).get("bindings", [])
-                
-                if order_bindings and order_bindings[0].get("total"):
-                    demand_this_week = int(order_bindings[0]["total"]["value"])
-                else:
-                    demand_this_week = 0
-            
-            # Update inventory
-            incoming = arrivals.get(actor_name, 0)
-            new_inv = prev_inv + incoming
-            
-            # Fulfill demand
-            total_demand = demand_this_week + prev_backlog
-            if new_inv >= total_demand:
-                outgoing = total_demand
-                new_inv -= total_demand
-                new_backlog = 0
-            else:
-                outgoing = new_inv
-                new_backlog = total_demand - outgoing
-                new_inv = 0
-            
-            inventories[actor_name] = {
-                "current": new_inv,
-                "backlog": new_backlog,
-                "incoming": incoming,
-                "outgoing": outgoing
-            }
-            
-            # Create Inventory entity
-            actor_namespace_uri = f"http://beergame.org/{config['namespace'].replace('bg_', '')}#"
-            
-            update = f"""
-                PREFIX bg: <http://beergame.org/ontology#>
-                PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-                PREFIX {config['namespace']}: <{actor_namespace_uri}>
-                
-                INSERT {{
-                    {config['namespace']}:Inventory_Week{week} a bg:Inventory ;
-                        bg:forWeek bg:Week_{week} ;
-                        bg:belongsTo {config['uri']} ;
-                        bg:currentInventory "{new_inv}"^^xsd:integer ;
-                        bg:backlog "{new_backlog}"^^xsd:integer ;
-                        bg:incomingShipment "{incoming}"^^xsd:integer ;
-                        bg:outgoingShipment "{outgoing}"^^xsd:integer ;
-                        bg:holdingCost "0.50"^^xsd:decimal ;
-                        bg:backlogCost "1.00"^^xsd:decimal .
-                }}
-                WHERE {{}}
-            """
-            self._execute_update(update, config['repo'])
-            
-            print(f"   {actor_name}: inv={new_inv}, backlog={new_backlog}, in={incoming}, out={outgoing}")
-        
-        return inventories
-    
-    def process_orders(self, week):
-        """Process ordering decisions"""
-        orders = {}
-        chain_order = ["Retailer", "Wholesaler", "Distributor"]
-        
-        for actor_name in chain_order:
-            config = self.supply_chain[actor_name]
-            
-            # Get suggested order quantity
-            query = f"""
-                PREFIX bg: <http://beergame.org/ontology#>
-                SELECT ?suggested WHERE {{
-                    ?metrics a bg:ActorMetrics ;
-                        bg:forWeek bg:Week_{week} ;
-                        bg:belongsTo {config['uri']} ;
-                        bg:suggestedOrderQuantity ?suggested .
+                    
+                    # Get total cost
+                    OPTIONAL {{
+                        <{config['uri']}> bg:totalCost ?cost .
+                    }}
                 }}
             """
             
@@ -355,261 +202,400 @@ class BeerGameDynamicSimulation:
             bindings = result.get("results", {}).get("bindings", [])
             
             if bindings:
-                order_qty = int(bindings[0]["suggested"]["value"])
-            else:
-                order_qty = 4  # Default
+                b = bindings[0]
+                actor_data = {
+                    "inventory": int(b.get("inv", {}).get("value", 0)),
+                    "backlog": int(b.get("backlog", {}).get("value", 0)),
+                    "coverage": float(b.get("coverage", {}).get("value", 0.0)),
+                    "suggested_order": int(b.get("suggested", {}).get("value", 0)),
+                    "total_cost": float(b.get("cost", {}).get("value", 0.0))
+                }
+                summary[actor_name] = actor_data
+                
+                print(f"  {actor_name}:")
+                print(f"    Inventory: {actor_data['inventory']}")
+                print(f"    Backlog: {actor_data['backlog']}")
+                print(f"    Coverage: {actor_data['coverage']:.1f} weeks")
+                print(f"    Suggested order: {actor_data['suggested_order']}")
+                print(f"    Total cost: ${actor_data['total_cost']:.2f}")
+        
+        print("="*60)
+        return summary
+    
+    def propagate_orders_to_receivers(self, week):
+        """
+        Copy orders to receiver repositories so they can create shipments
+        
+        Example: When Retailer creates Order_Week2_ToWholesaler in BG_Retailer,
+        this copies it as Order_Week2_FromRetailer to BG_Wholesaler.
+        """
+        print(f"\n🔄 Propagating orders to receiver repositories...")
+        
+        # Order flow: sender -> receiver
+        flows = [
+            ("BG_Retailer", "BG_Wholesaler", "Retailer", "Wholesaler"),
+            ("BG_Wholesaler", "BG_Distributor", "Wholesaler", "Distributor"),
+            ("BG_Distributor", "BG_Factory", "Distributor", "Factory"),
+        ]
+        
+        total_propagated = 0
+        
+        for sender_repo, receiver_repo, sender_name, receiver_name in flows:
+            print(f"   Checking {sender_name} → {receiver_name}...")
             
-            # Create Order
-            upstream_config = self.supply_chain[config['upstream_actor']]
-            order_uri = f"{config['namespace']}:Order_Week{week}"
-            
-            actor_namespace_uri = f"http://beergame.org/{config['namespace'].replace('bg_', '')}#"
-            upstream_namespace_uri = f"http://beergame.org/{upstream_config['namespace'].replace('bg_', '')}#"
-            
-            update = f"""
+            # Query orders in sender repo
+            query = f"""
                 PREFIX bg: <http://beergame.org/ontology#>
-                PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-                PREFIX {config['namespace']}: <{actor_namespace_uri}>
-                PREFIX {upstream_config['namespace']}: <{upstream_namespace_uri}>
-                
-                INSERT {{
-                    {order_uri} a bg:Order ;
-                        bg:forWeek bg:Week_{week} ;
-                        bg:placedBy {config['uri']} ;
-                        bg:receivedBy {config['upstream_uri']} ;
-                        bg:orderQuantity "{order_qty}"^^xsd:integer .
+                SELECT ?placedBy ?receivedBy ?qty
+                WHERE {{
+                    ?order a bg:Order ;
+                           bg:forWeek bg:Week_{week} ;
+                           bg:placedBy ?placedBy ;
+                           bg:receivedBy ?receivedBy ;
+                           bg:orderQuantity ?qty .
                 }}
-                WHERE {{}}
             """
-            self._execute_update(update, config['repo'])
-            orders[actor_name] = order_qty
-            print(f"   {actor_name} → {config['upstream_actor']}: {order_qty} units")
-        
-        return orders
-    
-    def create_shipments_fixed(self, week):
-        """
-        FIXED: Create shipments based on ACTUAL orders received, not current orders
-        """
-        shipments = {"outbound": {}, "inbound": {}}
-        
-        # Process each actor
-        for actor_name, config in self.supply_chain.items():
-            actor_namespace_uri = f"http://beergame.org/{config['namespace'].replace('bg_', '')}#"
             
-            # ===== OUTBOUND: Based on orders RECEIVED from downstream =====
-            if actor_name != "Retailer":
-                # Determine downstream
-                if actor_name == "Factory":
-                    downstream_name = "Distributor"
-                elif actor_name == "Distributor":
-                    downstream_name = "Wholesaler"
-                elif actor_name == "Wholesaler":
-                    downstream_name = "Retailer"
+            try:
+                response = requests.post(
+                    f"{self.base_url}/repositories/{sender_repo}",
+                    data={"query": query},
+                    headers={"Accept": "application/sparql-results+json"},
+                    timeout=10
+                )
                 
-                downstream_config = self.supply_chain[downstream_name]
-                downstream_namespace_uri = f"http://beergame.org/{downstream_config['namespace'].replace('bg_', '')}#"
-                
-                # Query for orders received FROM downstream this week
-                order_query = f"""
-                    PREFIX bg: <http://beergame.org/ontology#>
-                    SELECT (SUM(?qty) as ?total) WHERE {{
-                        ?order a bg:Order ;
-                            bg:forWeek bg:Week_{week} ;
-                            bg:receivedBy {config['uri']} ;
-                            bg:placedBy {downstream_config['uri']} ;
-                            bg:orderQuantity ?qty .
-                    }}
-                """
-                
-                order_result = self._execute_query(order_query, config['repo'])
-                order_bindings = order_result.get("results", {}).get("bindings", [])
-                
-                if order_bindings and order_bindings[0].get("total"):
-                    qty = int(order_bindings[0]["total"]["value"])
-                else:
-                    qty = 4  # Default if no orders found
-                
-                # Get shipping delay
-                shipping_delay = self._get_actor_delay(config, 'shippingDelay')
-                arrival_week_num = week + shipping_delay
-                
-                outbound_uri = f"{config['namespace']}:Shipment_Week{week}_To{downstream_name}"
-                
-                update = f"""
-                    PREFIX bg: <http://beergame.org/ontology#>
-                    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-                    PREFIX {config['namespace']}: <{actor_namespace_uri}>
-                    PREFIX {downstream_config['namespace']}: <{downstream_namespace_uri}>
+                if response.status_code == 200:
+                    bindings = response.json().get("results", {}).get("bindings", [])
+                    print(f"      Found {len(bindings)} orders to propagate")
                     
-                    INSERT {{
-                        {outbound_uri} a bg:Shipment ;
-                            bg:forWeek bg:Week_{week} ;
-                            bg:belongsTo {config['uri']} ;
-                            bg:shippedFrom {config['uri']} ;
-                            bg:shippedTo {downstream_config['uri']} ;
-                            bg:shippedQuantity "{qty}"^^xsd:integer ;
-                            bg:quantity "{qty}"^^xsd:integer ;
-                            bg:arrivalWeek bg:Week_{arrival_week_num} .
-                    }}
-                    WHERE {{}}
-                """
-                
-                self._execute_update(update, config['repo'])
-                shipments["outbound"][actor_name] = {
-                    "to": downstream_name,
-                    "qty": qty,
-                    "arrival": arrival_week_num
-                }
-                print(f"   {actor_name} → {downstream_name}: {qty} units (arrives Week {arrival_week_num})")
-            
-            # ===== INBOUND: Based on orders PLACED to upstream =====
-            if actor_name != "Factory":
-                upstream_name = config['upstream_actor']
-                upstream_config = self.supply_chain[upstream_name]
-                upstream_namespace_uri = f"http://beergame.org/{upstream_config['namespace'].replace('bg_', '')}#"
-                
-                # Query for MY order to upstream this week
-                my_order_query = f"""
-                    PREFIX bg: <http://beergame.org/ontology#>
-                    SELECT ?qty WHERE {{
-                        ?order a bg:Order ;
-                            bg:forWeek bg:Week_{week} ;
-                            bg:placedBy {config['uri']} ;
-                            bg:receivedBy {upstream_config['uri']} ;
-                            bg:orderQuantity ?qty .
-                    }}
-                """
-                
-                my_order_result = self._execute_query(my_order_query, config['repo'])
-                my_order_bindings = my_order_result.get("results", {}).get("bindings", [])
-                
-                if my_order_bindings:
-                    qty = int(my_order_bindings[0]["qty"]["value"])
-                else:
-                    qty = 4  # Default
-                
-                # Get shipping delay from UPSTREAM (sender)
-                shipping_delay = self._get_actor_delay(upstream_config, 'shippingDelay')
-                arrival_week_num = week + shipping_delay
-                
-                inbound_uri = f"{config['namespace']}:Shipment_Week{week}_From{upstream_name}"
-                
-                update = f"""
-                    PREFIX bg: <http://beergame.org/ontology#>
-                    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-                    PREFIX {config['namespace']}: <{actor_namespace_uri}>
-                    PREFIX {upstream_config['namespace']}: <{upstream_namespace_uri}>
+                    if not bindings:
+                        print(f"      ⚠️  No orders found in {sender_repo} for Week {week}")
+                        continue
                     
-                    INSERT {{
-                        {inbound_uri} a bg:Shipment ;
-                            bg:forWeek bg:Week_{week} ;
-                            bg:belongsTo {config['uri']} ;
-                            bg:shippedFrom {upstream_config['uri']} ;
-                            bg:shippedTo {config['uri']} ;
-                            bg:shippedQuantity "{qty}"^^xsd:integer ;
-                            bg:quantity "{qty}"^^xsd:integer ;
-                            bg:arrivalWeek bg:Week_{arrival_week_num} .
-                    }}
-                    WHERE {{}}
-                """
-                
-                self._execute_update(update, config['repo'])
-                shipments["inbound"][actor_name] = {
-                    "from": upstream_name,
-                    "qty": qty,
-                    "arrival": arrival_week_num
-                }
-                print(f"   {actor_name} ← {upstream_name}: expecting {qty} units (arrives Week {arrival_week_num})")
+                    for b in bindings:
+                        placed_by = b['placedBy']['value']
+                        received_by = b['receivedBy']['value']
+                        qty = b['qty']['value']
+                        
+                        print(f"      Processing order: {qty} units, {placed_by} → {received_by}")
+                        
+                        # Extract short names from URIs
+                        sender_short = placed_by.split('#')[1].split('_')[0]
+                        receiver_ns = received_by.split('#')[0]
+                        
+                        # Create order in receiver's repo
+                        insert = f"""
+                            PREFIX bg: <http://beergame.org/ontology#>
+                            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+                            PREFIX ns: <{receiver_ns}#>
+                            
+                            INSERT DATA {{
+                                ns:Order_Week{week}_From{sender_short} a bg:Order ;
+                                    bg:forWeek bg:Week_{week} ;
+                                    bg:placedBy <{placed_by}> ;
+                                    bg:receivedBy <{received_by}> ;
+                                    bg:orderQuantity "{qty}"^^xsd:integer .
+                            }}
+                        """
+                        
+                        print(f"      Inserting to {receiver_repo}...")
+                        
+                        resp = requests.post(
+                            f"{self.base_url}/repositories/{receiver_repo}/statements",
+                            data=insert,
+                            headers={"Content-Type": "application/sparql-update"},
+                            timeout=10
+                        )
+                        
+                        if resp.status_code == 204:
+                            print(f"      ✓ Propagated order {sender_name}→{receiver_name}")
+                            total_propagated += 1
+                        else:
+                            print(f"      ✗ Failed to propagate {sender_name}→{receiver_name}: {resp.status_code}")
+                            print(f"         Response: {resp.text[:200]}")
+                else:
+                    print(f"      ✗ Query failed: {response.status_code}")
+                            
+            except Exception as e:
+                print(f"      ✗ Error propagating {sender_name}→{receiver_name}: {e}")
+                import traceback
+                traceback.print_exc()
         
-        return shipments
+        print(f"\n   Total orders propagated: {total_propagated}")
     
-    def _get_actor_delay(self, config, delay_type):
-        """Get delay from actor configuration"""
-        query = f"""
+    def simulate_week(self, week, demand_pattern="stable"):
+        """
+        Orchestrate one week of simulation
+        
+        Steps:
+        1. Create temporal structure (Week entities, Metrics, Inventory)
+        2. Generate exogenous event (customer demand)
+        3. Execute business rules (all logic delegated)
+        4. Read and report results
+        """
+        print(f"\n{'#'*80}")
+        print(f"📅 WEEK {week} - SIMULATION")
+        print(f"{'#'*80}")
+        try
+        
+            # Step 1: Create temporal structure
+            print(f"\n🏗️  Creating temporal structure...")
+            self.rule_executor.create_week_entity(week)
+            
+            # Only create ActorMetrics for Week > 1 (Week 1 is in initial TTL)
+            if week > 1:
+                print("\n   [DEBUG] CHECKPOINT 1: After execute_week_rules")
+                self.rule_executor.create_actor_metrics_snapshot(week)
+                self.rule_executor.create_inventory_snapshot(week)
+            
+            # Step 2: Generate external event
+            demand = self.generate_customer_demand(week, demand_pattern)
+            
+            # Step 3: Execute business rules (ALL LOGIC HERE)
+            print(f"\n   Executing business rules...")
+            repos = [config['repo'] for config in self.supply_chain.values()]
+            self.rule_executor.execute_week_rules(week, repos)
+            print("\n   [DEBUG] CHECKPOINT 1: After execute_week_rules")
+            
+            # Step 3.5: Propagate orders to receiver repositories
+            # (so receivers can create shipments in response)
+            print(f"\n   [DEBUG] Week={week}, checking if should propagate (week > 1)...")
+            if week > 1:  # Week 1 orders already in TTL
+                print(f"   [DEBUG] Calling propagate_orders_to_receivers({week})...")
+                self.propagate_orders_to_receivers(week)
+            else:
+                print(f"   [DEBUG] Skipping propagation for Week 1 (orders in TTL)")
+            
+            # Step 4: Read results
+            summary = self.get_week_summary(week)
+            
+            return {
+                "week": week,
+                "demand": demand,
+                "summary": summary
+            }
+            
+        except Exception as e:
+        print(f"\n❌ EXCEPTION in simulate_week: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+    
+    def get_existing_weeks(self):
+        """Query GraphDB to find which weeks already exist"""
+        print("\n🔍 Checking for existing weeks...")
+        
+        # Query any repository (they all have the same weeks)
+        repo = list(self.supply_chain.values())[0]['repo']
+        
+        query = """
             PREFIX bg: <http://beergame.org/ontology#>
-            SELECT ?delay WHERE {{
-                {config['uri']} bg:{delay_type} ?delay .
-            }}
+            
+            SELECT DISTINCT ?weekNum
+            WHERE {
+                ?week a bg:Week ;
+                      bg:weekNumber ?weekNum .
+            }
+            ORDER BY ?weekNum
         """
         
-        result = self._execute_query(query, config['repo'])
-        bindings = result.get("results", {}).get("bindings", [])
+        endpoint = f"{self.base_url}/repositories/{repo}"
         
-        if bindings:
-            return int(bindings[0]["delay"]["value"])
-        return 2 if delay_type == 'shippingDelay' else 1
-    
-    def _execute_query(self, sparql, repository):
-        """Execute SPARQL SELECT or ASK query"""
-        endpoint = f"{self.graphdb_url}/repositories/{repository}"
         try:
-            response = self.session.post(
+            response = requests.post(
                 endpoint,
-                data={"query": sparql},
+                data={"query": query},
                 headers={"Accept": "application/sparql-results+json"},
-                timeout=30
+                timeout=10
             )
+            
             if response.status_code == 200:
-                return response.json()
-            return {"results": {"bindings": []}}
+                result = response.json()
+                bindings = result.get("results", {}).get("bindings", [])
+                weeks = [int(b['weekNum']['value']) for b in bindings]
+                
+                if weeks:
+                    print(f"   Found existing weeks: {weeks}")
+                else:
+                    print(f"   No existing weeks found (clean start)")
+                
+                return weeks
+            else:
+                print(f"   ⚠️  Could not query existing weeks: {response.status_code}")
+                return []
+        
         except Exception as e:
-            print(f"   ⚠️  Query error: {e}")
-            return {"results": {"bindings": []}}
+            print(f"   ⚠️  Error checking existing weeks: {e}")
+            return []
     
-    def _execute_update(self, sparql, repository):
-        """Execute SPARQL UPDATE query"""
-        endpoint = f"{self.graphdb_url}/repositories/{repository}/statements"
-        try:
-            response = self.session.post(
-                endpoint,
-                data={"update": sparql},
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                timeout=30
-            )
-            return response.status_code == 204
-        except Exception as e:
-            print(f"   ⚠️  Update error: {e}")
-            return False
-    
-    def generate_report(self):
-        """Generate final report"""
-        end_time = datetime.now()
-        duration = (end_time - self.start_time).total_seconds()
+    def run_simulation(self, weeks=4, demand_pattern="stable"):
+        """Run multi-week simulation (incremental - only simulates new weeks)"""
+        
+        # Check which weeks already exist
+        existing_weeks = self.get_existing_weeks()
+        max_existing = max(existing_weeks) if existing_weeks else 0
+        
+        if max_existing >= weeks:
+            print(f"\n⚠️  Weeks 1-{weeks} already simulated (max existing: {max_existing})")
+            print(f"   To re-simulate, run clean_temporal_data.py first")
+            print(f"   Or specify more weeks (e.g., {max_existing + 1}+)")
+            return
+        
+        start_week = max_existing + 1
         
         print(f"\n{'='*80}")
-        print(f"📊 SIMULATION REPORT")
+        print(f"🎮 BEER GAME SIMULATION - WEEKS {start_week} TO {weeks}")
+        if start_week > 1:
+            print(f"   Resuming from Week {start_week} (Weeks 1-{max_existing} already exist)")
+        print(f"   Demand Pattern: {demand_pattern}")
         print(f"{'='*80}")
-        print(f"   Duration: {duration:.2f} seconds")
-        print(f"   Weeks simulated: {len(self.results)}")
-        print(f"\n{'='*80}\n")
         
-        report_file = f"simulation_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        with open(report_file, 'w') as f:
-            json.dump({
-                "simulation_info": {
-                    "start": self.start_time.isoformat(),
-                    "end": end_time.isoformat(),
-                    "duration_seconds": duration
-                },
-                "results": self.results
-            }, f, indent=2)
+        for week in range(start_week, weeks + 1):
+            result = self.simulate_week(week, demand_pattern)
+            result['demand_pattern'] = demand_pattern  # Add pattern to result
+            self.results.append(result)
+            
+            if week < weeks:
+                time.sleep(1)
         
-        print(f"📁 Full report saved to: {report_file}")
+        self.generate_final_report()
+    
+    def generate_final_report(self):
+        """Generate final simulation report with rich data"""
+        print(f"\n{'='*80}")
+        print("📈 FINAL SIMULATION REPORT")
+        print(f"{'='*80}")
+        
+        if not self.results:
+            print("No results to report")
+            return
+        
+        print(f"\nTotal weeks simulated: {len(self.results)}")
+        
+        # Calculate total costs
+        print("\n💰 TOTAL COSTS:")
+        final_costs = {}
+        for actor_name in self.supply_chain.keys():
+            final_week = self.results[-1]
+            if actor_name in final_week['summary']:
+                cost = final_week['summary'][actor_name]['total_cost']
+                final_costs[actor_name] = cost
+                print(f"   {actor_name}: ${cost:.2f}")
+        
+        print(f"\n{'='*80}")
+        
+        # Save JSON report with rich structure
+        import json
+        from datetime import datetime
+        
+        # Build detailed weekly data
+        weekly_details = []
+        for result in self.results:
+            week_data = {
+                "week": result['week'],
+                "demand": result['demand'],
+                "actors": {}
+            }
+            
+            for actor_name, actor_summary in result['summary'].items():
+                week_data["actors"][actor_name] = {
+                    "inventory": actor_summary['inventory'],
+                    "backlog": actor_summary['backlog'],
+                    "coverage": actor_summary['coverage'],
+                    "suggested_order": actor_summary['suggested_order'],
+                    "total_cost": actor_summary['total_cost']
+                }
+            
+            weekly_details.append(week_data)
+        
+        report = {
+            "metadata": {
+                "simulation_date": datetime.now().isoformat(),
+                "weeks_simulated": len(self.results),
+                "demand_pattern": self.results[0].get('demand_pattern', 'unknown') if self.results else None,
+                "supply_chain": {
+                    actor: {
+                        "uri": config['uri'],
+                        "repository": config['repo']
+                    }
+                    for actor, config in self.supply_chain.items()
+                }
+            },
+            "simulation": {
+                "weekly_results": weekly_details,
+                "final_costs": final_costs,
+                "total_cost": sum(final_costs.values())
+            },
+            "performance": {
+                "retailer_service_level": self._calculate_service_level("Retailer"),
+                "average_inventory": self._calculate_avg_inventory(),
+                "total_backlog": self._calculate_total_backlog()
+            }
+        }
+        
+        report_file = f"beer_game_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        
+        try:
+            with open(report_file, 'w') as f:
+                json.dump(report, f, indent=2)
+            print(f"📄 Report saved to: {report_file}")
+        except Exception as e:
+            print(f"⚠️  Could not save report: {e}")
+    
+    def _calculate_service_level(self, actor_name):
+        """Calculate service level (weeks without backlog / total weeks)"""
+        if not self.results:
+            return 0.0
+        
+        weeks_without_backlog = sum(
+            1 for r in self.results 
+            if actor_name in r['summary'] and r['summary'][actor_name]['backlog'] == 0
+        )
+        return weeks_without_backlog / len(self.results)
+    
+    def _calculate_avg_inventory(self):
+        """Calculate average inventory across all actors and weeks"""
+        if not self.results:
+            return 0.0
+        
+        total_inv = 0
+        count = 0
+        for result in self.results:
+            for actor_summary in result['summary'].values():
+                total_inv += actor_summary['inventory']
+                count += 1
+        
+        return total_inv / count if count > 0 else 0.0
+    
+    def _calculate_total_backlog(self):
+        """Calculate total backlog across all actors in final week"""
+        if not self.results:
+            return 0
+        
+        final_week = self.results[-1]
+        return sum(
+            actor_summary['backlog'] 
+            for actor_summary in final_week['summary'].values()
+        )
 
 
 def main():
-    """Interactive menu for running simulation"""
-    sim = BeerGameDynamicSimulation()
+    """Interactive simulation"""
+    print("🎯 BEER GAME ORCHESTRATOR (Clean Architecture)")
+    print("=" * 80)
+    print("Architecture:")
+    print("  • Orchestrator: Events + Time (this file)")
+    print("  • Rules Engine: Logic + Decisions (SPARQL)")
+    print("=" * 80 + "\n")
     
-    print("\n" + "="*80)
-    print("🍺 BEER GAME FEDERATED SIMULATION")
-    print("="*80)
-    print("\nChoose demand pattern:")
-    print("1. Stable (constant 4 units)")
-    print("2. Spike (12 units at week 3)")
-    print("3. Increasing (gradual growth)")
-    print("4. Random (2-8 units)")
+    orchestrator = BeerGameOrchestrator()
+    
+    # Interactive menu
+    print("Choose demand pattern:")
+    print("  1. Stable (constant 4 units)")
+    print("  2. Spike (12 units at week 3)")
+    print("  3. Increasing (gradual growth)")
+    print("  4. Random (2-8 units)")
     
     choice = input("\nEnter choice (1-4, default=1): ").strip() or "1"
     
@@ -621,24 +607,12 @@ def main():
     }
     pattern = patterns.get(choice, "stable")
     
-    weeks_input = input("Number of weeks (default=4): ").strip() or "4"
-    try:
-        weeks = int(weeks_input)
-    except ValueError:
-        weeks = 4
+    weeks = int(input("Number of weeks (default=4): ").strip() or "4")
     
-    print(f"\n🎯 Running simulation:")
-    print(f"   Pattern: {pattern}")
-    print(f"   Weeks: {weeks}")
-    print("\nPress Ctrl+C to cancel...\n")
+    # Run simulation
+    orchestrator.run_simulation(weeks=weeks, demand_pattern=pattern)
     
-    try:
-        sim.run_simulation(weeks=weeks, demand_pattern=pattern)
-    except KeyboardInterrupt:
-        print("\n\n⚠️  Simulation cancelled by user")
-    except Exception as e:
-        print(f"\n\n❌ Error during simulation: {e}")
-        raise
+    print("\n✅ Simulation complete!")
 
 
 if __name__ == "__main__":

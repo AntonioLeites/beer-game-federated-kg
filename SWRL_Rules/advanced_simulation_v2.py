@@ -101,9 +101,16 @@ class BeerGameOrchestrator:
                 headers=headers,
                 timeout=30
             )
-            return response.status_code == 204
+            if response.status_code == 204:
+                return True
+            else:
+                print(f"      ✗ Update failed: HTTP {response.status_code}")
+                print(f"      Response: {response.text[:200]}")
+                return False
         except Exception as e:
-            print(f"Update exception: {e}")
+            print(f"      ✗ Update exception: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     # NOTE: create_week_entity, create_actor_metrics_snapshot, and
@@ -135,22 +142,30 @@ class BeerGameOrchestrator:
         # Create CustomerDemand entity (only for Retailer)
         config = self.supply_chain["Retailer"]
         
+        # Use DELETE+INSERT to ensure correct demand value (idempotent)
         update = f"""
             PREFIX bg: <http://beergame.org/ontology#>
             PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
             PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
             PREFIX {config['namespace']}: <http://beergame.org/{config['namespace'].replace('bg_', '')}#>
             
+            DELETE {{
+                {config['namespace']}:CustomerDemand_Week{week} bg:actualDemand ?oldDemand ;
+                                                                   rdfs:comment ?oldComment .
+            }}
             INSERT {{
                 {config['namespace']}:CustomerDemand_Week{week} a bg:CustomerDemand ;
                     bg:forWeek bg:Week_{week} ;
-                    bg:belongsTo {config['uri']} ;
+                    bg:belongsTo <{config['uri']}> ;
                     bg:actualDemand "{demand}"^^xsd:integer ;
                     rdfs:comment "Customer demand for Week {week}" .
             }}
             WHERE {{
-                FILTER NOT EXISTS {{
-                    {config['namespace']}:CustomerDemand_Week{week} a bg:CustomerDemand .
+                OPTIONAL {{
+                    {config['namespace']}:CustomerDemand_Week{week} bg:actualDemand ?oldDemand .
+                }}
+                OPTIONAL {{
+                    {config['namespace']}:CustomerDemand_Week{week} rdfs:comment ?oldComment .
                 }}
             }}
         """
@@ -158,10 +173,28 @@ class BeerGameOrchestrator:
         self._execute_update(update, config['repo'])
         print(f"      Customer demand: {demand} units")
         
+        # Verify it was created
+        verify_query = f"""
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT ?demand
+            WHERE {{
+                ?entity a bg:CustomerDemand ;
+                        bg:forWeek bg:Week_{week} ;
+                        bg:actualDemand ?demand .
+            }}
+        """
+        result = self._execute_query(verify_query, config['repo'])
+        bindings = result.get("results", {}).get("bindings", [])
+        if bindings:
+            actual = bindings[0]['demand']['value']
+            print(f"      ✓ Verified in GraphDB: {actual} units")
+        else:
+            print(f"      ⚠️  WARNING: CustomerDemand not found in GraphDB!")
+        
         return demand
     
     def get_week_summary(self, week):
-        """Read results computed by rules"""
+        """Read results computed by rules - comprehensive metrics"""
         print(f"\n📊 WEEK {week} SUMMARY:")
         print("="*60)
         
@@ -172,7 +205,11 @@ class BeerGameOrchestrator:
                 PREFIX bg: <http://beergame.org/ontology#>
                 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
                 
-                SELECT ?inv ?backlog ?coverage ?suggested ?cost
+                SELECT ?inv ?backlog ?coverage ?suggested ?cost 
+                       ?demandRate ?bullwhip ?stockout
+                       (COUNT(DISTINCT ?orderPlaced) as ?ordersPlaced)
+                       (COUNT(DISTINCT ?orderReceived) as ?ordersReceived)
+                       (COUNT(DISTINCT ?shipment) as ?shipmentsCreated)
                 WHERE {{
                     # Get inventory
                     OPTIONAL {{
@@ -188,14 +225,39 @@ class BeerGameOrchestrator:
                         <{config['uri']}> bg:hasMetrics ?metrics .
                         ?metrics bg:forWeek bg:Week_{week} ;
                                  bg:inventoryCoverage ?coverage ;
-                                 bg:suggestedOrderQuantity ?suggested .
+                                 bg:suggestedOrderQuantity ?suggested ;
+                                 bg:demandRate ?demandRate ;
+                                 bg:hasBullwhipRisk ?bullwhip ;
+                                 bg:hasStockoutRisk ?stockout .
                     }}
                     
                     # Get total cost
                     OPTIONAL {{
                         <{config['uri']}> bg:totalCost ?cost .
                     }}
+                    
+                    # Count orders PLACED by this actor (outgoing)
+                    OPTIONAL {{
+                        ?orderPlaced a bg:Order ;
+                               bg:forWeek bg:Week_{week} ;
+                               bg:placedBy <{config['uri']}> .
+                    }}
+                    
+                    # Count orders RECEIVED by this actor (incoming/propagated)
+                    OPTIONAL {{
+                        ?orderReceived a bg:Order ;
+                                       bg:forWeek bg:Week_{week} ;
+                                       bg:receivedBy <{config['uri']}> .
+                    }}
+                    
+                    # Count shipments sent this week
+                    OPTIONAL {{
+                        ?shipment a bg:Shipment ;
+                                  bg:forWeek bg:Week_{week} ;
+                                  bg:shippedFrom <{config['uri']}> .
+                    }}
                 }}
+                GROUP BY ?inv ?backlog ?coverage ?suggested ?cost ?demandRate ?bullwhip ?stockout
             """
             
             result = self._execute_query(query, config['repo'])
@@ -208,7 +270,13 @@ class BeerGameOrchestrator:
                     "backlog": int(b.get("backlog", {}).get("value", 0)),
                     "coverage": float(b.get("coverage", {}).get("value", 0.0)),
                     "suggested_order": int(b.get("suggested", {}).get("value", 0)),
-                    "total_cost": float(b.get("cost", {}).get("value", 0.0))
+                    "total_cost": float(b.get("cost", {}).get("value", 0.0)),
+                    "demand_rate": float(b.get("demandRate", {}).get("value", 0.0)),
+                    "bullwhip_risk": b.get("bullwhip", {}).get("value", "false").lower() == "true",
+                    "stockout_risk": b.get("stockout", {}).get("value", "false").lower() == "true",
+                    "orders_placed": int(b.get("ordersPlaced", {}).get("value", 0)),
+                    "orders_received": int(b.get("ordersReceived", {}).get("value", 0)),
+                    "shipments_created": int(b.get("shipmentsCreated", {}).get("value", 0))
                 }
                 summary[actor_name] = actor_data
                 
@@ -216,11 +284,135 @@ class BeerGameOrchestrator:
                 print(f"    Inventory: {actor_data['inventory']}")
                 print(f"    Backlog: {actor_data['backlog']}")
                 print(f"    Coverage: {actor_data['coverage']:.1f} weeks")
+                print(f"    Demand rate: {actor_data['demand_rate']:.1f}")
                 print(f"    Suggested order: {actor_data['suggested_order']}")
+                print(f"    Orders placed: {actor_data['orders_placed']} | received: {actor_data['orders_received']}")
+                print(f"    Shipments created: {actor_data['shipments_created']}")
+                
+                # Show warnings
+                if actor_data['bullwhip_risk']:
+                    print(f"    ⚠️  BULLWHIP RISK DETECTED")
+                if actor_data['stockout_risk']:
+                    print(f"    ⚠️  STOCKOUT RISK DETECTED")
+                    
                 print(f"    Total cost: ${actor_data['total_cost']:.2f}")
         
         print("="*60)
         return summary
+    
+    def propagate_orders_to_receivers(self, week):
+        """
+        Copy orders to receiver repositories so they can create shipments
+        
+        Example: When Retailer creates Order_Week2_ToWholesaler in BG_Retailer,
+        this copies it as Order_Week2_FromRetailer to BG_Wholesaler.
+        """
+        print(f"\n🔄 Propagating orders to receiver repositories...")
+        
+        # Order flow: sender -> receiver
+        flows = [
+            ("BG_Retailer", "BG_Wholesaler", "Retailer", "Wholesaler"),
+            ("BG_Wholesaler", "BG_Distributor", "Wholesaler", "Distributor"),
+            ("BG_Distributor", "BG_Factory", "Distributor", "Factory"),
+        ]
+        
+        total_propagated = 0
+        
+        for sender_repo, receiver_repo, sender_name, receiver_name in flows:
+            print(f"   Checking {sender_name} → {receiver_name}...")
+            
+            # Query orders in sender repo
+            query = f"""
+                PREFIX bg: <http://beergame.org/ontology#>
+                SELECT ?placedBy ?receivedBy ?qty
+                WHERE {{
+                    ?order a bg:Order ;
+                           bg:forWeek bg:Week_{week} ;
+                           bg:placedBy ?placedBy ;
+                           bg:receivedBy ?receivedBy ;
+                           bg:orderQuantity ?qty .
+                }}
+            """
+            
+            try:
+                response = requests.post(
+                    f"{self.base_url}/repositories/{sender_repo}",
+                    data={"query": query},
+                    headers={"Accept": "application/sparql-results+json"},
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    bindings = response.json().get("results", {}).get("bindings", [])
+                    print(f"      Found {len(bindings)} orders to propagate")
+                    
+                    if not bindings:
+                        print(f"      ⚠️  No orders found in {sender_repo} for Week {week}")
+                        continue
+                    
+                    for b in bindings:
+                        placed_by = b['placedBy']['value']
+                        received_by = b['receivedBy']['value']
+                        qty = b['qty']['value']
+                        
+                        # Extract receiver actor from URI
+                        # e.g., "http://beergame.org/wholesaler#Wholesaler_Beta" → "wholesaler"
+                        receiver_namespace = received_by.split('/')[-1].split('#')[0]
+                        
+                        # Map receiver_repo to expected namespace
+                        # e.g., "BG_Wholesaler" → "wholesaler"
+                        expected_namespace = receiver_repo.replace("BG_", "").lower()
+                        
+                        # Only propagate if this order is actually FOR this receiver
+                        if receiver_namespace != expected_namespace:
+                            print(f"      ⊘ Skipping (not for {receiver_name}): {placed_by} → {received_by}")
+                            continue
+                        
+                        print(f"      Processing order: {qty} units, {placed_by} → {received_by}")
+                        
+                        # Extract short names from URIs
+                        sender_short = placed_by.split('#')[1].split('_')[0]
+                        receiver_ns = received_by.split('#')[0]
+                        
+                        # Create order in receiver's repo
+                        insert = f"""
+                            PREFIX bg: <http://beergame.org/ontology#>
+                            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+                            PREFIX ns: <{receiver_ns}#>
+                            
+                            INSERT DATA {{
+                                ns:Order_Week{week}_From{sender_short} a bg:Order ;
+                                    bg:forWeek bg:Week_{week} ;
+                                    bg:placedBy <{placed_by}> ;
+                                    bg:receivedBy <{received_by}> ;
+                                    bg:orderQuantity "{qty}"^^xsd:integer .
+                            }}
+                        """
+                        
+                        print(f"      Inserting to {receiver_repo}...")
+                        
+                        resp = requests.post(
+                            f"{self.base_url}/repositories/{receiver_repo}/statements",
+                            data=insert,
+                            headers={"Content-Type": "application/sparql-update"},
+                            timeout=10
+                        )
+                        
+                        if resp.status_code == 204:
+                            print(f"      ✓ Propagated order {sender_name}→{receiver_name}")
+                            total_propagated += 1
+                        else:
+                            print(f"      ✗ Failed to propagate {sender_name}→{receiver_name}: {resp.status_code}")
+                            print(f"         Response: {resp.text[:200]}")
+                else:
+                    print(f"      ✗ Query failed: {response.status_code}")
+                            
+            except Exception as e:
+                print(f"      ✗ Error propagating {sender_name}→{receiver_name}: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        print(f"\n   Total orders propagated: {total_propagated}")
     
     def simulate_week(self, week, demand_pattern="stable"):
         """
@@ -239,8 +431,10 @@ class BeerGameOrchestrator:
         # Step 1: Create temporal structure
         print(f"\n🏗️  Creating temporal structure...")
         self.rule_executor.create_week_entity(week)
-        self.rule_executor.create_actor_metrics_snapshot(week)
+        
+        # Only create ActorMetrics for Week > 1 (Week 1 is in initial TTL)
         if week > 1:
+            self.rule_executor.create_actor_metrics_snapshot(week)
             self.rule_executor.create_inventory_snapshot(week)
         
         # Step 2: Generate external event
@@ -251,6 +445,20 @@ class BeerGameOrchestrator:
         repos = [config['repo'] for config in self.supply_chain.values()]
         self.rule_executor.execute_week_rules(week, repos)
         
+        # Step 3.5: Propagate orders to receiver repositories
+        # (so receivers can create shipments in response)
+        print(f"\n   [DEBUG] Week={week}, checking if should propagate (week > 1)...")
+        if week > 1:  # Week 1 orders already in TTL
+            print(f"   [DEBUG] Calling propagate_orders_to_receivers({week})...")
+            self.propagate_orders_to_receivers(week)
+            
+            # Step 3.6: Re-execute CREATE SHIPMENTS after orders are propagated
+            print(f"\n   Re-executing CREATE SHIPMENTS after order propagation...")
+            for repo in repos:
+                self.rule_executor.execute_rule("CREATE SHIPMENTS FROM ORDERS", repo)
+        else:
+            print(f"   [DEBUG] Skipping propagation for Week 1 (orders in TTL)")
+        
         # Step 4: Read results
         summary = self.get_week_summary(week)
         
@@ -260,14 +468,76 @@ class BeerGameOrchestrator:
             "summary": summary
         }
     
+    def get_existing_weeks(self):
+        """Query GraphDB to find which weeks already exist"""
+        print("\n🔍 Checking for existing weeks...")
+        
+        # Query any repository (they all have the same weeks)
+        repo = list(self.supply_chain.values())[0]['repo']
+        
+        query = """
+            PREFIX bg: <http://beergame.org/ontology#>
+            
+            SELECT DISTINCT ?weekNum
+            WHERE {
+                ?week a bg:Week ;
+                      bg:weekNumber ?weekNum .
+            }
+            ORDER BY ?weekNum
+        """
+        
+        endpoint = f"{self.base_url}/repositories/{repo}"
+        
+        try:
+            response = requests.post(
+                endpoint,
+                data={"query": query},
+                headers={"Accept": "application/sparql-results+json"},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                bindings = result.get("results", {}).get("bindings", [])
+                weeks = [int(b['weekNum']['value']) for b in bindings]
+                
+                if weeks:
+                    print(f"   Found existing weeks: {weeks}")
+                else:
+                    print(f"   No existing weeks found (clean start)")
+                
+                return weeks
+            else:
+                print(f"   ⚠️  Could not query existing weeks: {response.status_code}")
+                return []
+        
+        except Exception as e:
+            print(f"   ⚠️  Error checking existing weeks: {e}")
+            return []
+    
     def run_simulation(self, weeks=4, demand_pattern="stable"):
-        """Run multi-week simulation"""
+        """Run multi-week simulation (incremental - only simulates new weeks)"""
+        
+        # Check which weeks already exist
+        existing_weeks = self.get_existing_weeks()
+        max_existing = max(existing_weeks) if existing_weeks else 0
+        
+        if max_existing >= weeks:
+            print(f"\n⚠️  Weeks 1-{weeks} already simulated (max existing: {max_existing})")
+            print(f"   To re-simulate, run clean_temporal_data.py first")
+            print(f"   Or specify more weeks (e.g., {max_existing + 1}+)")
+            return
+        
+        start_week = max_existing + 1
+        
         print(f"\n{'='*80}")
-        print(f"🎮 BEER GAME SIMULATION - {weeks} WEEKS")
+        print(f"🎮 BEER GAME SIMULATION - WEEKS {start_week} TO {weeks}")
+        if start_week > 1:
+            print(f"   Resuming from Week {start_week} (Weeks 1-{max_existing} already exist)")
         print(f"   Demand Pattern: {demand_pattern}")
         print(f"{'='*80}")
         
-        for week in range(1, weeks + 1):
+        for week in range(start_week, weeks + 1):
             result = self.simulate_week(week, demand_pattern)
             result['demand_pattern'] = demand_pattern  # Add pattern to result
             self.results.append(result)
@@ -278,7 +548,7 @@ class BeerGameOrchestrator:
         self.generate_final_report()
     
     def generate_final_report(self):
-        """Generate final simulation report"""
+        """Generate final simulation report with rich data"""
         print(f"\n{'='*80}")
         print("📈 FINAL SIMULATION REPORT")
         print(f"{'='*80}")
@@ -291,28 +561,69 @@ class BeerGameOrchestrator:
         
         # Calculate total costs
         print("\n💰 TOTAL COSTS:")
+        final_costs = {}
         for actor_name in self.supply_chain.keys():
             final_week = self.results[-1]
             if actor_name in final_week['summary']:
                 cost = final_week['summary'][actor_name]['total_cost']
+                final_costs[actor_name] = cost
                 print(f"   {actor_name}: ${cost:.2f}")
         
         print(f"\n{'='*80}")
         
-        # Save JSON report
+        # Save JSON report with rich structure
         import json
         from datetime import datetime
         
+        # Build detailed weekly data
+        weekly_details = []
+        for result in self.results:
+            week_data = {
+                "week": result['week'],
+                "demand": result['demand'],
+                "actors": {}
+            }
+            
+            for actor_name, actor_summary in result['summary'].items():
+                week_data["actors"][actor_name] = {
+                    "inventory": actor_summary['inventory'],
+                    "backlog": actor_summary['backlog'],
+                    "coverage": actor_summary['coverage'],
+                    "demand_rate": actor_summary['demand_rate'],
+                    "suggested_order": actor_summary['suggested_order'],
+                    "orders_placed": actor_summary['orders_placed'],
+                    "orders_received": actor_summary['orders_received'],
+                    "shipments_created": actor_summary['shipments_created'],
+                    "bullwhip_risk": actor_summary['bullwhip_risk'],
+                    "stockout_risk": actor_summary['stockout_risk'],
+                    "total_cost": actor_summary['total_cost']
+                }
+            
+            weekly_details.append(week_data)
+        
         report = {
-            "simulation_date": datetime.now().isoformat(),
-            "weeks_simulated": len(self.results),
-            "demand_pattern": self.results[0].get('demand_pattern', 'unknown') if self.results else None,
-            "weeks": self.results,
-            "final_costs": {
-                actor_name: self.results[-1]['summary'][actor_name]['total_cost']
-                for actor_name in self.supply_chain.keys()
-                if actor_name in self.results[-1]['summary']
-            } if self.results else {}
+            "metadata": {
+                "simulation_date": datetime.now().isoformat(),
+                "weeks_simulated": len(self.results),
+                "demand_pattern": self.results[0].get('demand_pattern', 'unknown') if self.results else None,
+                "supply_chain": {
+                    actor: {
+                        "uri": config['uri'],
+                        "repository": config['repo']
+                    }
+                    for actor, config in self.supply_chain.items()
+                }
+            },
+            "simulation": {
+                "weekly_results": weekly_details,
+                "final_costs": final_costs,
+                "total_cost": sum(final_costs.values())
+            },
+            "performance": {
+                "retailer_service_level": self._calculate_service_level("Retailer"),
+                "average_inventory": self._calculate_avg_inventory(),
+                "total_backlog": self._calculate_total_backlog()
+            }
         }
         
         report_file = f"beer_game_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
@@ -323,6 +634,42 @@ class BeerGameOrchestrator:
             print(f"📄 Report saved to: {report_file}")
         except Exception as e:
             print(f"⚠️  Could not save report: {e}")
+    
+    def _calculate_service_level(self, actor_name):
+        """Calculate service level (weeks without backlog / total weeks)"""
+        if not self.results:
+            return 0.0
+        
+        weeks_without_backlog = sum(
+            1 for r in self.results 
+            if actor_name in r['summary'] and r['summary'][actor_name]['backlog'] == 0
+        )
+        return weeks_without_backlog / len(self.results)
+    
+    def _calculate_avg_inventory(self):
+        """Calculate average inventory across all actors and weeks"""
+        if not self.results:
+            return 0.0
+        
+        total_inv = 0
+        count = 0
+        for result in self.results:
+            for actor_summary in result['summary'].values():
+                total_inv += actor_summary['inventory']
+                count += 1
+        
+        return total_inv / count if count > 0 else 0.0
+    
+    def _calculate_total_backlog(self):
+        """Calculate total backlog across all actors in final week"""
+        if not self.results:
+            return 0
+        
+        final_week = self.results[-1]
+        return sum(
+            actor_summary['backlog'] 
+            for actor_summary in final_week['summary'].values()
+        )
 
 
 def main():

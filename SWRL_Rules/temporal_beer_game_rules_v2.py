@@ -530,25 +530,30 @@ class TemporalBeerGameRuleExecutor:
         """
         Create bg:Week_N entity in all repositories
         This provides the temporal anchor for all entities in that week
+        Idempotent: can be called multiple times safely
         """
         print(f"   Creating Week_{week} entities...")
         
         for actor_name, repo_id in self.repositories.items():
+            # Use DELETE+INSERT to ensure weekNumber always exists
             query = f"""
                 PREFIX bg: <http://beergame.org/ontology#>
                 PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
                 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
                 
+                DELETE {{
+                    bg:Week_{week} bg:weekNumber ?oldNum ;
+                                   rdfs:label ?oldLabel .
+                }}
                 INSERT {{
                     bg:Week_{week} a bg:Week ;
                         bg:weekNumber "{week}"^^xsd:integer ;
                         rdfs:label "Week {week}" .
                 }}
                 WHERE {{
-                    # Only insert if weekNumber doesn't exist (more specific check)
-                    FILTER NOT EXISTS {{ 
-                        bg:Week_{week} bg:weekNumber ?num 
-                    }}
+                    # Bind old values if they exist (for DELETE)
+                    OPTIONAL {{ bg:Week_{week} bg:weekNumber ?oldNum }}
+                    OPTIONAL {{ bg:Week_{week} rdfs:label ?oldLabel }}
                 }}
             """
             
