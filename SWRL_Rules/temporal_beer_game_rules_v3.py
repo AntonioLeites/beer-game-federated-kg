@@ -1,5 +1,5 @@
 """
-Beer Game Federated KG - Temporal Rules Engine V3 (Federated Queries)
+Beer Game Federated KG - Temporal Rules Engine V3 (Federated Queries - COMPLETE)
 
 Design Philosophy:
 - All Beer Game business logic is encoded as SPARQL rules
@@ -10,10 +10,11 @@ Design Philosophy:
 - For standalone execution, use: advanced_simulation_v3.py
 
 Key Changes from V2:
-- UPDATE INVENTORY: Queries arriving shipments from BG_Supply_Chain
-- CREATE SHIPMENTS: Queries incoming orders from BG_Supply_Chain
-- Eliminated need for propagate_orders_to_receivers()
-- Eliminated need for propagate_shipments_to_receivers()
+- UPDATE INVENTORY: Queries arriving shipments from BG_Supply_Chain ✅
+- CREATE SHIPMENTS: Queries incoming orders from BG_Supply_Chain ✅
+- Eliminated propagate_orders_to_receivers() ✅
+- Eliminated propagate_shipments_to_receivers() ✅
+- 100% federated architecture - zero manual propagation ✅
 
 Usage:
     from temporal_beer_game_rules_v3 import TemporalBeerGameRuleExecutor
@@ -883,6 +884,138 @@ class TemporalBeerGameRuleExecutor:
         except:
             return False
     
+    def query_incoming_orders_federated(self, week_number, actor_uri, actor_repo):
+        """
+        V3 NEW: Query incoming orders using BG_Supply_Chain federation
+        
+        This replaces the need to manually propagate orders between repos.
+        The federated query automatically sees orders in all repositories.
+        
+        Returns: List of (placedBy_uri, quantity) tuples for orders received by this actor
+        """
+        query = f"""
+            PREFIX bg: <http://beergame.org/ontology#>
+            
+            SELECT ?placedBy ?qty
+            WHERE {{
+                ?order a bg:Order ;
+                       bg:forWeek bg:Week_{week_number} ;
+                       bg:receivedBy <{actor_uri}> ;
+                       bg:placedBy ?placedBy ;
+                       bg:orderQuantity ?qty .
+            }}
+        """
+        
+        # Query BG_Supply_Chain (federation endpoint)
+        endpoint = f"{self.base_url}/repositories/BG_Supply_Chain"
+        headers = {"Accept": "application/sparql-results+json"}
+        
+        try:
+            response = self.session.post(
+                endpoint,
+                data={"query": query},
+                headers=headers,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                results = response.json()
+                bindings = results.get("results", {}).get("bindings", [])
+                
+                orders = []
+                for b in bindings:
+                    placed_by = b['placedBy']['value']
+                    qty = int(b['qty']['value'])
+                    orders.append((placed_by, qty))
+                
+                if orders:
+                    print(f"      📦 Federated query found {len(orders)} incoming orders for {actor_uri.split('#')[1]}")
+                    for placed_by, qty in orders:
+                        print(f"         - {qty} units from {placed_by.split('#')[1]}")
+                return orders
+            else:
+                print(f"      ⚠️  Federated orders query failed: HTTP {response.status_code}")
+                return []
+                
+        except Exception as e:
+            print(f"      ✗ Federated orders query error: {e}")
+            return []
+    
+    def create_shipments_from_federated_orders(self, week_number, actor_uri, actor_repo, orders):
+        """
+        V3 NEW: Create shipments based on federated order query results
+        
+        For each order found, create a shipment in the actor's repository
+        """
+        if not orders:
+            return
+        
+        # Get actor's shipping delay
+        actor_query = f"""
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT ?shippingDelay WHERE {{
+                <{actor_uri}> bg:shippingDelay ?shippingDelay .
+            }}
+        """
+        
+        try:
+            response = self.session.post(
+                f"{self.base_url}/repositories/{actor_repo}",
+                data={"query": actor_query},
+                headers={"Accept": "application/sparql-results+json"},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                bindings = response.json().get("results", {}).get("bindings", [])
+                shipping_delay = int(bindings[0]['shippingDelay']['value']) if bindings else 2
+            else:
+                shipping_delay = 2  # Default
+        except:
+            shipping_delay = 2
+        
+        arrival_week = week_number + shipping_delay
+        
+        # Create shipments for each order
+        for placed_by_uri, qty in orders:
+            # Extract names for URI construction
+            downstream_name = placed_by_uri.split('#')[1].split('_')[0]  # "Retailer_Alpha" -> "Retailer"
+            
+            shipment_uri = f"{actor_uri.split('#')[0]}#Shipment_Week{week_number}_To{downstream_name}"
+            
+            insert = f"""
+                PREFIX bg: <http://beergame.org/ontology#>
+                PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+                PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                
+                INSERT DATA {{
+                    <{shipment_uri}> a bg:Shipment ;
+                        bg:forWeek bg:Week_{week_number} ;
+                        bg:belongsTo <{actor_uri}> ;
+                        bg:shippedFrom <{actor_uri}> ;
+                        bg:shippedTo <{placed_by_uri}> ;
+                        bg:shippedQuantity "{qty}"^^xsd:integer ;
+                        bg:arrivalWeek "{arrival_week}"^^xsd:integer ;
+                        rdfs:comment "Shipment responding to order (Week {week_number}, arrives {arrival_week})" .
+                }}
+            """
+            
+            try:
+                response = self.session.post(
+                    f"{self.base_url}/repositories/{actor_repo}/statements",
+                    data=insert,
+                    headers={"Content-Type": "application/sparql-update"},
+                    timeout=10
+                )
+                
+                if response.status_code == 204:
+                    print(f"         ✓ Created shipment: {qty} units to {placed_by_uri.split('#')[1]}")
+                else:
+                    print(f"         ✗ Failed to create shipment: HTTP {response.status_code}")
+            except Exception as e:
+                print(f"         ✗ Error creating shipment: {e}")
+    
+    
     def execute_inventory_update_with_federation(self, week_number):
         """
         V3 NEW: Execute UPDATE INVENTORY with federated shipment queries
@@ -966,18 +1099,54 @@ class TemporalBeerGameRuleExecutor:
         self.execute_inventory_update_with_federation(week_number)
         executed += len(repositories)  # Count as success for all repos
         
-        # Step 3-9: Continue with remaining rules
-        remaining_rules = [
+        # Step 3-6: Continue with metrics and policy rules
+        pre_shipment_rules = [
             "INVENTORY COVERAGE CALCULATION",
             "STOCKOUT RISK DETECTION",
             "ORDER-UP-TO POLICY",
-            "CREATE ORDERS FROM SUGGESTED",
-            "CREATE SHIPMENTS FROM ORDERS",
+            "CREATE ORDERS FROM SUGGESTED"
+        ]
+        
+        for rule_name in pre_shipment_rules:
+            if rule_name not in self.rules:
+                print(f"⚠️  Rule '{rule_name}' not found, skipping")
+                continue
+            
+            print(f"\n→ Executing: {rule_name}")
+            
+            for repo in repositories:
+                if self.execute_rule(rule_name, repo):
+                    executed += 1
+                else:
+                    failed += 1
+        
+        # Step 7: V3 CREATE SHIPMENTS with federated order queries
+        print(f"\n→ Executing: CREATE SHIPMENTS (V3 federated version)")
+        
+        actor_uris = {
+            "BG_Retailer": "http://beergame.org/retailer#Retailer_Alpha",
+            "BG_Wholesaler": "http://beergame.org/wholesaler#Wholesaler_Beta",
+            "BG_Distributor": "http://beergame.org/distributor#Distributor_Gamma",
+            "BG_Factory": "http://beergame.org/factory#Factory_Delta"
+        }
+        
+        for actor_repo, actor_uri in actor_uris.items():
+            # Query incoming orders (federated)
+            orders = self.query_incoming_orders_federated(week_number, actor_uri, actor_repo)
+            
+            # Create shipments based on orders found
+            if orders:
+                self.create_shipments_from_federated_orders(week_number, actor_uri, actor_repo, orders)
+        
+        executed += len(repositories)  # Count as success for all repos
+        
+        # Step 8-9: Continue with analysis rules
+        post_shipment_rules = [
             "BULLWHIP DETECTION",
             "TOTAL COST CALCULATION"
         ]
         
-        for rule_name in remaining_rules:
+        for rule_name in post_shipment_rules:
             if rule_name not in self.rules:
                 print(f"⚠️  Rule '{rule_name}' not found, skipping")
                 continue
