@@ -949,3 +949,4 @@ class TemporalBeerGameRuleExecutor:
 # This is a library module - import and use from orchestrator
 # For standalone simulation, use: advanced_simulation_v2.py
 
+.

@@ -91,29 +91,11 @@ def get_temporal_rules():
                 }
                 BIND(COALESCE(?arriving, 0) AS ?incomingShipments)
                 
-                # Get demand for this week (customer demand OR incoming orders)
+                # V3: Get demand from temp property (set by federated query)
                 OPTIONAL {
-                    # Customer demand (for retailer)
-                    ?demand_entity a bg:CustomerDemand ;
-                                  bg:forWeek ?week ;
-                                  bg:belongsTo ?actor ;
-                                  bg:actualDemand ?customerDemand .
+                    ?inv bg:tempDemand ?demand .
                 }
-                
-                OPTIONAL {
-                    # Downstream orders (for other actors) - sum them
-                    SELECT ?actor ?week (SUM(?qty) as ?orderDemand)
-                    WHERE {
-                        ?order a bg:Order ;
-                               bg:forWeek ?week ;
-                               bg:receivedBy ?actor ;
-                               bg:orderQuantity ?qty .
-                    }
-                    GROUP BY ?actor ?week
-                }
-                
-                # Use customer demand if available, otherwise orders
-                BIND(COALESCE(?customerDemand, ?orderDemand, 0) AS ?demandThisWeek)
+                BIND(COALESCE(?demand, 0) AS ?demandThisWeek)
                 
                 # Calculate new inventory (force integer types)
                 BIND(xsd:integer(?oldInv) + xsd:integer(?incomingShipments) AS ?afterArrival)
@@ -811,6 +793,108 @@ class TemporalBeerGameRuleExecutor:
         # We'll make CREATE SHIPMENTS look for orders in its own repo only
         pass
     
+    def query_demand_for_inventory_federated(self, week_number, actor_uri, actor_repo):
+        """
+        V3 NEW: Query demand for UPDATE INVENTORY using federated approach
+        
+        For Retailer: Uses CustomerDemand from local repo
+        For others: Uses sum of incoming Orders from BG_Supply_Chain (federated)
+        
+        Returns: Total demand for this week
+        """
+        # First check for CustomerDemand (Retailer only)
+        customer_demand_query = f"""
+            PREFIX bg: <http://beergame.org/ontology#>
+            
+            SELECT ?demand
+            WHERE {{
+                ?demandEntity a bg:CustomerDemand ;
+                              bg:forWeek bg:Week_{week_number} ;
+                              bg:belongsTo <{actor_uri}> ;
+                              bg:actualDemand ?demand .
+            }}
+        """
+        
+        endpoint_local = f"{self.base_url}/repositories/{actor_repo}"
+        
+        try:
+            response = self.session.post(
+                endpoint_local,
+                data={"query": customer_demand_query},
+                headers={"Accept": "application/sparql-results+json"},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                bindings = response.json().get("results", {}).get("bindings", [])
+                if bindings:
+                    demand = float(bindings[0]["demand"]["value"])
+                    print(f"      📊 Customer demand for {actor_uri.split('#')[1]}: {demand}")
+                    return demand
+        except:
+            pass
+        
+        # No customer demand, query incoming orders (federated)
+        orders_query = f"""
+            PREFIX bg: <http://beergame.org/ontology#>
+            
+            SELECT (SUM(?qty) as ?totalOrders)
+            WHERE {{
+                ?order a bg:Order ;
+                       bg:forWeek bg:Week_{week_number} ;
+                       bg:receivedBy <{actor_uri}> ;
+                       bg:orderQuantity ?qty .
+            }}
+        """
+        
+        endpoint_fed = f"{self.base_url}/repositories/BG_Supply_Chain"
+        
+        try:
+            response = self.session.post(
+                endpoint_fed,
+                data={"query": orders_query},
+                headers={"Accept": "application/sparql-results+json"},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                bindings = response.json().get("results", {}).get("bindings", [])
+                if bindings and bindings[0].get("totalOrders"):
+                    total = float(bindings[0]["totalOrders"]["value"])
+                    print(f"      📦 Federated orders demand for {actor_uri.split('#')[1]}: {total}")
+                    return total
+        except Exception as e:
+            print(f"      ✗ Federated demand query error: {e}")
+        
+        return 0  # No demand found
+    
+    def set_temp_demand(self, week_number, actor_uri, actor_repo, demand):
+        """
+        V3 Helper: Set temporary property for demand
+        This allows UPDATE INVENTORY rule to use federated query results
+        """
+        update = f"""
+            PREFIX bg: <http://beergame.org/ontology#>
+            
+            INSERT {{
+                ?inv bg:tempDemand "{demand}"^^xsd:integer .
+            }}
+            WHERE {{
+                ?inv a bg:Inventory ;
+                     bg:forWeek bg:Week_{week_number} ;
+                     bg:belongsTo <{actor_uri}> .
+            }}
+        """
+        
+        endpoint = f"{self.base_url}/repositories/{actor_repo}/statements"
+        headers = {"Content-Type": "application/sparql-update"}
+        
+        try:
+            response = self.session.post(endpoint, data=update, headers=headers, timeout=30)
+            return response.status_code == 204
+        except:
+            return False
+    
     def query_arriving_shipments_federated(self, week_number, actor_uri, actor_repo):
         """
         V3 NEW: Query arriving shipments using BG_Supply_Chain federation
@@ -1178,15 +1262,16 @@ class TemporalBeerGameRuleExecutor:
     
     def execute_inventory_update_with_federation(self, week_number):
         """
-        V3 NEW: Execute UPDATE INVENTORY with federated shipment queries
+        V3 NEW: Execute UPDATE INVENTORY with federated queries
         
         Process:
         1. For each actor, query arriving shipments from BG_Supply_Chain
-        2. Set temp property with arriving quantity
-        3. Execute UPDATE INVENTORY rule (uses temp property)
-        4. Clean up temp properties
+        2. For each actor, query demand (customer or orders) from BG_Supply_Chain
+        3. Set temp properties with values
+        4. Execute UPDATE INVENTORY rule (uses temp properties)
+        5. Clean up temp properties
         """
-        print(f"\n→ Executing: UPDATE INVENTORY (with federated shipment queries)")
+        print(f"\n→ Executing: UPDATE INVENTORY (with federated queries)")
         
         # Actor URI mapping
         actor_uris = {
@@ -1200,19 +1285,29 @@ class TemporalBeerGameRuleExecutor:
             # Step 1: Query arriving shipments (federated)
             arriving = self.query_arriving_shipments_federated(week_number, actor_uri, actor_repo)
             
-            # Step 2: Set temp property
+            # Step 2: Query demand (federated for orders, local for customer demand)
+            demand = self.query_demand_for_inventory_federated(week_number, actor_uri, actor_repo)
+            
+            # Step 3: Set temp properties
             self.set_temp_arriving_shipments(week_number, actor_uri, actor_repo, arriving)
+            self.set_temp_demand(week_number, actor_uri, actor_repo, int(demand))
         
-        # Step 3: Execute UPDATE INVENTORY rule
+        # Step 4: Execute UPDATE INVENTORY rule
         for repo in self.repositories.values():
             self.execute_rule("UPDATE INVENTORY", repo)
         
-        # Step 4: Clean up temp properties
+        # Step 5: Clean up temp properties
         for repo in self.repositories.values():
             cleanup = """
                 PREFIX bg: <http://beergame.org/ontology#>
-                DELETE { ?inv bg:tempArrivingShipments ?val }
-                WHERE { ?inv bg:tempArrivingShipments ?val }
+                DELETE { 
+                    ?inv bg:tempArrivingShipments ?val1 .
+                    ?inv bg:tempDemand ?val2 .
+                }
+                WHERE { 
+                    OPTIONAL { ?inv bg:tempArrivingShipments ?val1 }
+                    OPTIONAL { ?inv bg:tempDemand ?val2 }
+                }
             """
             endpoint = f"{self.base_url}/repositories/{repo}/statements"
             self.session.post(endpoint, data=cleanup, headers={"Content-Type": "application/sparql-update"})
