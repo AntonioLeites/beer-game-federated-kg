@@ -47,8 +47,8 @@ def get_temporal_rules():
             # See: execute_inventory_update_with_federation()
             
             DELETE {
-                ?inv bg:currentInventory ?oldInv ;
-                     bg:backlog ?oldBacklog .
+                ?inv bg:currentInventory ?currentInvValue ;
+                     bg:backlog ?currentBacklogValue .
             }
             INSERT {
                 ?inv bg:currentInventory ?newInv ;
@@ -63,14 +63,27 @@ def get_temporal_rules():
                 # Get inventory for this week (only if NOT already processed)
                 ?inv a bg:Inventory ;
                      bg:forWeek ?week ;
-                     bg:belongsTo ?actor ;
-                     bg:currentInventory ?oldInv ;
-                     bg:backlog ?oldBacklog .
+                     bg:belongsTo ?actor .
+                
+                # Get current values for DELETE
+                OPTIONAL { ?inv bg:currentInventory ?currentInvValue }
+                OPTIONAL { ?inv bg:backlog ?currentBacklogValue }
                 
                 # IDEMPOTENCY: Skip if already processed
                 FILTER NOT EXISTS {
                     ?inv bg:inventoryProcessed "true"^^xsd:boolean .
                 }
+                
+                # Get PREVIOUS week's values for calculation
+                ?prevWeek a bg:Week ;
+                          bg:weekNumber ?prevWeekNum .
+                FILTER(?prevWeekNum = ?weekNum - 1)
+                
+                ?prevInv a bg:Inventory ;
+                         bg:forWeek ?prevWeek ;
+                         bg:belongsTo ?actor ;
+                         bg:currentInventory ?oldInv ;
+                         bg:backlog ?oldBacklog .
                 
                 # V3: Get arriving shipments from temp property (set by federated query)
                 OPTIONAL {
@@ -78,49 +91,55 @@ def get_temporal_rules():
                 }
                 BIND(COALESCE(?arriving, 0) AS ?incomingShipments)
                 
-                # Get demand for this week
+                # Get demand for this week (customer demand OR incoming orders)
                 OPTIONAL {
-                    SELECT ?actor ?week (SUM(?demand) as ?totalDemand)
+                    # Customer demand (for retailer)
+                    ?demand_entity a bg:CustomerDemand ;
+                                  bg:forWeek ?week ;
+                                  bg:belongsTo ?actor ;
+                                  bg:actualDemand ?customerDemand .
+                }
+                
+                OPTIONAL {
+                    # Downstream orders (for other actors) - sum them
+                    SELECT ?actor ?week (SUM(?qty) as ?orderDemand)
                     WHERE {
-                        {
-                            # Customer demand (for retailer)
-                            ?demand_entity a bg:CustomerDemand ;
-                                          bg:forWeek ?week ;
-                                          bg:belongsTo ?actor ;
-                                          bg:actualDemand ?demand .
-                        } UNION {
-                            # Downstream orders (for other actors)
-                            ?order a bg:Order ;
-                                   bg:forWeek ?week ;
-                                   bg:receivedBy ?actor ;
-                                   bg:orderQuantity ?demand .
-                        }
+                        ?order a bg:Order ;
+                               bg:forWeek ?week ;
+                               bg:receivedBy ?actor ;
+                               bg:orderQuantity ?qty .
                     }
                     GROUP BY ?actor ?week
                 }
-                BIND(COALESCE(?totalDemand, 0) AS ?demandThisWeek)
                 
-                # Calculate new inventory
+                # Use customer demand if available, otherwise orders
+                BIND(COALESCE(?customerDemand, ?orderDemand, 0) AS ?demandThisWeek)
+                
+                # Calculate new inventory (force integer types)
                 BIND(xsd:integer(?oldInv) + xsd:integer(?incomingShipments) AS ?afterArrival)
-                BIND(?demandThisWeek + xsd:integer(?oldBacklog) AS ?totalNeed)
+                BIND(xsd:integer(?demandThisWeek) + xsd:integer(?oldBacklog) AS ?totalNeed)
                 
-                # Fulfill what we can
+                # Fulfill what we can (results are integers)
                 BIND(
-                    IF(?afterArrival >= ?totalNeed,
-                       ?afterArrival - ?totalNeed,
-                       0
+                    xsd:integer(
+                        IF(?afterArrival >= ?totalNeed,
+                           ?afterArrival - ?totalNeed,
+                           0
+                        )
                     ) AS ?newInv
                 )
                 BIND(
-                    IF(?afterArrival >= ?totalNeed,
-                       0,
-                       ?totalNeed - ?afterArrival
+                    xsd:integer(
+                        IF(?afterArrival >= ?totalNeed,
+                           0,
+                           ?totalNeed - ?afterArrival
+                        )
                     ) AS ?newBacklog
                 )
                 
-                # Bind old values for DELETE
-                OPTIONAL { ?inv bg:currentInventory ?oldInv }
-                OPTIONAL { ?inv bg:backlog ?oldBacklog }
+                # Bind current values for DELETE (using different variable names)
+                OPTIONAL { ?inv bg:currentInventory ?currentInvToDelete }
+                OPTIONAL { ?inv bg:backlog ?currentBacklogToDelete }
             }
         """,
         
@@ -275,30 +294,16 @@ def get_temporal_rules():
                 ?metrics bg:forWeek ?week ;
                          bg:demandRate ?oldRate .
                 
-                # Get actual demand for this week
+                # V3: Get observed demand from temp property (set by federated query)
                 OPTIONAL {
-                    ?demand a bg:CustomerDemand ;
-                            bg:forWeek ?week ;
-                            bg:belongsTo ?actor ;
-                            bg:actualDemand ?currentDemand .
+                    ?metrics bg:tempObservedDemand ?observedDemand .
                 }
                 
-                # If no customer demand, check for downstream orders
-                OPTIONAL {
-                    SELECT ?actor ?week (AVG(?qty) as ?avgOrderQty)
-                    WHERE {
-                        ?order a bg:Order ;
-                               bg:forWeek ?week ;
-                               bg:receivedBy ?actor ;
-                               bg:orderQuantity ?qty .
-                    }
-                    GROUP BY ?actor ?week
-                }
-                
-                BIND(COALESCE(?currentDemand, ?avgOrderQty, ?oldRate) AS ?observedDemand)
+                # Fallback to old rate if no observed demand
+                BIND(COALESCE(?observedDemand, ?oldRate) AS ?currentDemand)
                 
                 # Exponential smoothing: 30% new, 70% old
-                BIND((xsd:decimal(?observedDemand) * 0.3) + (?oldRate * 0.7) AS ?smoothedRate)
+                BIND((xsd:decimal(?currentDemand) * 0.3) + (?oldRate * 0.7) AS ?smoothedRate)
                 
                 # Only update if change > 5%
                 BIND(ABS(?smoothedRate - ?oldRate) / ?oldRate AS ?changeRatio)
@@ -1016,6 +1021,161 @@ class TemporalBeerGameRuleExecutor:
                 print(f"         ✗ Error creating shipment: {e}")
     
     
+    def query_observed_demand_federated(self, week_number, actor_uri, actor_repo):
+        """
+        V3 NEW: Query observed demand using BG_Supply_Chain federation
+        
+        For Retailer: Uses CustomerDemand (local, current week)
+        For others: Uses incoming Orders (federated query, PREVIOUS week)
+        
+        Note: Orders are queried from week N-1 because orders for week N 
+              haven't been created yet when DEMAND RATE SMOOTHING executes.
+        
+        Returns: Observed demand quantity
+        """
+        # Check if this is Retailer (has CustomerDemand)
+        customer_demand_query = f"""
+            PREFIX bg: <http://beergame.org/ontology#>
+            
+            SELECT ?demand
+            WHERE {{
+                ?demandEntity a bg:CustomerDemand ;
+                              bg:forWeek bg:Week_{week_number} ;
+                              bg:belongsTo <{actor_uri}> ;
+                              bg:actualDemand ?demand .
+            }}
+        """
+        
+        endpoint_local = f"{self.base_url}/repositories/{actor_repo}"
+        
+        try:
+            response = self.session.post(
+                endpoint_local,
+                data={"query": customer_demand_query},
+                headers={"Accept": "application/sparql-results+json"},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                bindings = response.json().get("results", {}).get("bindings", [])
+                if bindings:
+                    demand = float(bindings[0]["demand"]["value"])
+                    print(f"      📊 Customer demand for {actor_uri.split('#')[1]}: {demand}")
+                    return demand
+        except:
+            pass
+        
+        # No customer demand, query incoming orders from PREVIOUS week (federated)
+        # We use week N-1 because orders for week N haven't been created yet
+        prev_week = week_number - 1
+        if prev_week < 1:
+            return None  # No previous week
+        
+        orders_query = f"""
+            PREFIX bg: <http://beergame.org/ontology#>
+            
+            SELECT (AVG(?qty) as ?avgQty)
+            WHERE {{
+                ?order a bg:Order ;
+                       bg:forWeek bg:Week_{prev_week} ;
+                       bg:receivedBy <{actor_uri}> ;
+                       bg:orderQuantity ?qty .
+            }}
+        """
+        
+        endpoint_fed = f"{self.base_url}/repositories/BG_Supply_Chain"
+        
+        try:
+            response = self.session.post(
+                endpoint_fed,
+                data={"query": orders_query},
+                headers={"Accept": "application/sparql-results+json"},
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                bindings = response.json().get("results", {}).get("bindings", [])
+                if bindings and bindings[0].get("avgQty"):
+                    avg_qty = float(bindings[0]["avgQty"]["value"])
+                    print(f"      📦 Federated orders (Week {prev_week}) for {actor_uri.split('#')[1]}: {avg_qty}")
+                    return avg_qty
+        except Exception as e:
+            print(f"      ✗ Federated demand query error: {e}")
+        
+        return None  # No demand observed
+    
+    def set_temp_observed_demand(self, week_number, actor_uri, actor_repo, observed_demand):
+        """
+        V3 Helper: Set temporary property for observed demand
+        This allows DEMAND RATE SMOOTHING rule to use federated query results
+        """
+        if observed_demand is None:
+            return False
+        
+        update = f"""
+            PREFIX bg: <http://beergame.org/ontology#>
+            
+            INSERT {{
+                ?metrics bg:tempObservedDemand "{observed_demand}"^^xsd:decimal .
+            }}
+            WHERE {{
+                ?metrics a bg:ActorMetrics ;
+                         bg:forWeek bg:Week_{week_number} ;
+                         bg:belongsTo <{actor_uri}> .
+            }}
+        """
+        
+        endpoint = f"{self.base_url}/repositories/{actor_repo}/statements"
+        headers = {"Content-Type": "application/sparql-update"}
+        
+        try:
+            response = self.session.post(endpoint, data=update, headers=headers, timeout=30)
+            return response.status_code == 204
+        except:
+            return False
+    
+    def execute_demand_rate_smoothing_with_federation(self, week_number):
+        """
+        V3 NEW: Execute DEMAND RATE SMOOTHING with federated demand queries
+        
+        Process:
+        1. For each actor, query observed demand from BG_Supply_Chain
+        2. Set temp property with observed demand
+        3. Execute DEMAND RATE SMOOTHING rule (uses temp property)
+        4. Clean up temp properties
+        """
+        print(f"\n→ Executing: DEMAND RATE SMOOTHING (with federated demand queries)")
+        
+        # Actor URI mapping
+        actor_uris = {
+            "BG_Retailer": "http://beergame.org/retailer#Retailer_Alpha",
+            "BG_Wholesaler": "http://beergame.org/wholesaler#Wholesaler_Beta",
+            "BG_Distributor": "http://beergame.org/distributor#Distributor_Gamma",
+            "BG_Factory": "http://beergame.org/factory#Factory_Delta"
+        }
+        
+        for actor_repo, actor_uri in actor_uris.items():
+            # Step 1: Query observed demand (federated for non-Retailer)
+            observed = self.query_observed_demand_federated(week_number, actor_uri, actor_repo)
+            
+            # Step 2: Set temp property
+            if observed is not None:
+                self.set_temp_observed_demand(week_number, actor_uri, actor_repo, observed)
+        
+        # Step 3: Execute DEMAND RATE SMOOTHING rule
+        for repo in self.repositories.values():
+            self.execute_rule("DEMAND RATE SMOOTHING", repo)
+        
+        # Step 4: Clean up temp properties
+        for repo in self.repositories.values():
+            cleanup = """
+                PREFIX bg: <http://beergame.org/ontology#>
+                DELETE { ?metrics bg:tempObservedDemand ?val }
+                WHERE { ?metrics bg:tempObservedDemand ?val }
+            """
+            endpoint = f"{self.base_url}/repositories/{repo}/statements"
+            self.session.post(endpoint, data=cleanup, headers={"Content-Type": "application/sparql-update"})
+    
     def execute_inventory_update_with_federation(self, week_number):
         """
         V3 NEW: Execute UPDATE INVENTORY with federated shipment queries
@@ -1087,13 +1247,9 @@ class TemporalBeerGameRuleExecutor:
         executed = 0
         failed = 0
         
-        # Step 1: DEMAND RATE SMOOTHING
-        print(f"\n→ Executing: DEMAND RATE SMOOTHING")
-        for repo in repositories:
-            if self.execute_rule("DEMAND RATE SMOOTHING", repo):
-                executed += 1
-            else:
-                failed += 1
+        # Step 1: V3 DEMAND RATE SMOOTHING with federated demand queries
+        self.execute_demand_rate_smoothing_with_federation(week_number)
+        executed += len(repositories)  # Count as success for all repos
         
         # Step 2: V3 UPDATE INVENTORY with federated shipment queries
         self.execute_inventory_update_with_federation(week_number)
