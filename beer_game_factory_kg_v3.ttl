@@ -14,10 +14,10 @@
 # ============================================================================
 
 # Actor Definition
-bg_factory:Factory_Delta a bg:Actor ;
+bg_factory:Factory_Delta a bg:Factory ;
     rdfs:label "Factory Delta" ;
-    bg:role "Factory" ;
     bg:shippingDelay "2"^^xsd:integer ;
+    bg:orderDelay "1"^^xsd:integer ;
     bg:targetInventoryCoverage "2.5"^^xsd:decimal ;
     bg:orderUpToLevel "10"^^xsd:integer ;
     bg:demandSmoothingAlpha "0.3"^^xsd:decimal ;
@@ -41,7 +41,7 @@ bg_factory:Inventory_Week1 a bg:Inventory ;
     rdfs:label "Factory Inventory Week 1" .
 
 # Metrics Week 1
-bg_factory:Factory_Delta_Metrics_Week1 a bg:ActorMetrics ;
+bg_factory:Factory_Delta_Metrics_W1 a bg:ActorMetrics ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_factory:Factory_Delta ;
     bg:demandRate "4.0"^^xsd:decimal ;
@@ -51,6 +51,8 @@ bg_factory:Factory_Delta_Metrics_Week1 a bg:ActorMetrics ;
     bg:suggestedOrderQuantity "0"^^xsd:integer ;
     bg:totalCost "12.0"^^xsd:decimal ;
     rdfs:label "Factory Metrics Week 1" .
+
+bg_factory:Factory_Delta bg:hasMetrics bg_factory:Factory_Delta_Metrics_W1 .
 
 # Shipment Week 1 - Created BY Factory, sent TO Distributor
 # V3: Only in Factory repo

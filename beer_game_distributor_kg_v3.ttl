@@ -1,27 +1,42 @@
-@prefix bg: <http://beergame.org/ontology#> .
-@prefix bg_distributor: <http://beergame.org/distributor#> .
-@prefix bg_wholesaler: <http://beergame.org/wholesaler#> .
-@prefix bg_factory: <http://beergame.org/factory#> .
-@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
-
 # ============================================================================
 # BEER GAME DISTRIBUTOR KNOWLEDGE GRAPH - V3 (Federated, No Duplication)
+# Federated endpoint: http://localhost:7200/repositories/BG_Distributor
 # ============================================================================
 # V3 Changes:
 # - NO orders from downstream (received via BG_Supply_Chain federation)
 # - NO shipments from upstream (received via BG_Supply_Chain federation)
 # - Only entities CREATED by Distributor
 # ============================================================================
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix bg: <http://beergame.org/ontology#> .
+@prefix bg_distributor: <http://beergame.org/distributor#> .
+@prefix bg_wholesaler: <http://beergame.org/wholesaler#> .
+@prefix bg_factory: <http://beergame.org/factory#> .
 
+# ============================================================
+# DISTRIBUTOR ACTOR (STATIC IDENTITY)
+# ============================================================
 # Actor Definition
-bg_distributor:Distributor_Gamma a bg:Actor ;
+bg_distributor:Distributor_Gamma a bg:Distributor ;
     rdfs:label "Distributor Gamma" ;
-    bg:role "Distributor" ;
     bg:shippingDelay "2"^^xsd:integer ;
+    bg:orderDelay "1"^^xsd:integer ;
     bg:targetInventoryCoverage "2.5"^^xsd:decimal ;
     bg:orderUpToLevel "10"^^xsd:integer ;
-    bg:demandSmoothingAlpha "0.3"^^xsd:decimal .
+    bg:demandSmoothingAlpha "0.3"^^xsd:decimal ;
+    bg:agentModel "Claude-Sonnet-3.5"^^xsd:string ;
+    bg:agentPrompt """You are the Distributor in a beer distribution game.
+Balance supply chain efficiency with responsiveness.
+Use federated queries to access downstream demand patterns."""^^xsd:string .
+
+
+
+
+# ============================================================
+# TIME DIMENSION
+# ============================================================
 
 # Week 1
 bg:Week_1 a bg:Week ;
@@ -41,7 +56,7 @@ bg_distributor:Inventory_Week1 a bg:Inventory ;
     rdfs:label "Distributor Inventory Week 1" .
 
 # Metrics Week 1
-bg_distributor:Distributor_Gamma_Metrics_Week1 a bg:ActorMetrics ;
+bg_distributor:Distributor_Gamma_Metrics_W1 a bg:ActorMetrics ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_distributor:Distributor_Gamma ;
     bg:demandRate "4.0"^^xsd:decimal ;
@@ -51,6 +66,8 @@ bg_distributor:Distributor_Gamma_Metrics_Week1 a bg:ActorMetrics ;
     bg:suggestedOrderQuantity "4"^^xsd:integer ;
     bg:totalCost "12.0"^^xsd:decimal ;
     rdfs:label "Distributor Metrics Week 1" .
+
+bg_distributor:Distributor_Gamma bg:hasMetrics bg_distributor:Distributor_Gamma_Metrics_W1 .
 
 # Order Week 1 - Created BY Distributor, sent TO Factory
 # V3: Only in Distributor repo

@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "simulation_date": "2026-01-10T03:42:23.893561",
+    "simulation_date": "2026-01-10T12:41:54.607704",
     "weeks_simulated": 5,
     "demand_pattern": "spike",
     "supply_chain": {
@@ -29,45 +29,6 @@
         "demand": 4,
         "actors": {
           "Retailer": {
-            "inventory": 4,
-            "backlog": 0,
-            "coverage": 1.0,
-            "demand_rate": 4.0,
-            "suggested_order": 8,
-            "orders_placed": 1,
-            "orders_received": 0,
-            "shipments_created": 0,
-            "bullwhip_risk": true,
-            "stockout_risk": true,
-            "total_cost": 6.0
-          },
-          "Wholesaler": {
-            "inventory": 8,
-            "backlog": 0,
-            "coverage": 2.0,
-            "demand_rate": 4.0,
-            "suggested_order": 4,
-            "orders_placed": 1,
-            "orders_received": 0,
-            "shipments_created": 1,
-            "bullwhip_risk": false,
-            "stockout_risk": true,
-            "total_cost": 8.0
-          },
-          "Distributor": {
-            "inventory": 8,
-            "backlog": 0,
-            "coverage": 2.0,
-            "demand_rate": 4.0,
-            "suggested_order": 4,
-            "orders_placed": 1,
-            "orders_received": 0,
-            "shipments_created": 1,
-            "bullwhip_risk": false,
-            "stockout_risk": true,
-            "total_cost": 8.0
-          },
-          "Factory": {
             "inventory": 8,
             "backlog": 0,
             "coverage": 2.0,
@@ -75,10 +36,49 @@
             "suggested_order": 0,
             "orders_placed": 0,
             "orders_received": 0,
-            "shipments_created": 1,
+            "shipments_created": 0,
             "bullwhip_risk": false,
             "stockout_risk": false,
-            "total_cost": 8.0
+            "total_cost": 28.0
+          },
+          "Wholesaler": {
+            "inventory": 12,
+            "backlog": 0,
+            "coverage": 3.0,
+            "demand_rate": 4.0,
+            "suggested_order": 0,
+            "orders_placed": 0,
+            "orders_received": 0,
+            "shipments_created": 0,
+            "bullwhip_risk": false,
+            "stockout_risk": false,
+            "total_cost": 38.0
+          },
+          "Distributor": {
+            "inventory": 12,
+            "backlog": 0,
+            "coverage": 3.0,
+            "demand_rate": 4.0,
+            "suggested_order": 0,
+            "orders_placed": 0,
+            "orders_received": 0,
+            "shipments_created": 0,
+            "bullwhip_risk": false,
+            "stockout_risk": false,
+            "total_cost": 38.0
+          },
+          "Factory": {
+            "inventory": 12,
+            "backlog": 0,
+            "coverage": 3.0,
+            "demand_rate": 4.0,
+            "suggested_order": 0,
+            "orders_placed": 0,
+            "orders_received": 0,
+            "shipments_created": 0,
+            "bullwhip_risk": false,
+            "stockout_risk": false,
+            "total_cost": 30.0
           }
         }
       },
@@ -91,52 +91,52 @@
             "backlog": 0,
             "coverage": 0.0,
             "demand_rate": 6.4,
-            "suggested_order": 20,
-            "orders_placed": 1,
+            "suggested_order": 0,
+            "orders_placed": 0,
             "orders_received": 0,
             "shipments_created": 0,
-            "bullwhip_risk": true,
-            "stockout_risk": true,
-            "total_cost": 6.0
+            "bullwhip_risk": false,
+            "stockout_risk": false,
+            "total_cost": 28.0
           },
           "Wholesaler": {
             "inventory": 16,
             "backlog": 0,
-            "coverage": 3.076923076923077,
-            "demand_rate": 5.2,
+            "coverage": 5.714285714285714,
+            "demand_rate": 2.8,
             "suggested_order": 0,
             "orders_placed": 0,
             "orders_received": 0,
-            "shipments_created": 1,
+            "shipments_created": 0,
             "bullwhip_risk": false,
             "stockout_risk": false,
-            "total_cost": 16.0
+            "total_cost": 38.0
           },
           "Distributor": {
             "inventory": 16,
             "backlog": 0,
-            "coverage": 4.0,
-            "demand_rate": 4.0,
+            "coverage": 5.714285714285714,
+            "demand_rate": 2.8,
             "suggested_order": 0,
             "orders_placed": 0,
             "orders_received": 0,
             "shipments_created": 0,
             "bullwhip_risk": false,
             "stockout_risk": false,
-            "total_cost": 16.0
+            "total_cost": 38.0
           },
           "Factory": {
-            "inventory": 8,
+            "inventory": 12,
             "backlog": 0,
-            "coverage": 2.0,
-            "demand_rate": 4.0,
+            "coverage": 4.285714285714286,
+            "demand_rate": 2.8,
             "suggested_order": 0,
             "orders_placed": 0,
             "orders_received": 0,
             "shipments_created": 0,
             "bullwhip_risk": false,
             "stockout_risk": false,
-            "total_cost": 12.0
+            "total_cost": 30.0
           }
         }
       },
@@ -145,56 +145,56 @@
         "demand": 4,
         "actors": {
           "Retailer": {
-            "inventory": 4,
-            "backlog": 0,
-            "coverage": 0.704225352112676,
+            "inventory": 0,
+            "backlog": 4,
+            "coverage": 0.0,
             "demand_rate": 5.68,
-            "suggested_order": 14,
-            "orders_placed": 1,
+            "suggested_order": 0,
+            "orders_placed": 0,
             "orders_received": 0,
             "shipments_created": 0,
-            "bullwhip_risk": true,
-            "stockout_risk": true,
-            "total_cost": 8.0
+            "bullwhip_risk": false,
+            "stockout_risk": false,
+            "total_cost": 28.0
           },
           "Wholesaler": {
-            "inventory": 20,
+            "inventory": 16,
             "backlog": 0,
-            "coverage": 2.074688796680498,
-            "demand_rate": 9.64,
-            "suggested_order": 9,
-            "orders_placed": 1,
-            "orders_received": 0,
-            "shipments_created": 1,
-            "bullwhip_risk": false,
-            "stockout_risk": true,
-            "total_cost": 26.0
-          },
-          "Distributor": {
-            "inventory": 20,
-            "backlog": 0,
-            "coverage": 7.142857142857143,
-            "demand_rate": 2.8,
-            "suggested_order": 0,
-            "orders_placed": 0,
-            "orders_received": 0,
-            "shipments_created": 1,
-            "bullwhip_risk": false,
-            "stockout_risk": false,
-            "total_cost": 26.0
-          },
-          "Factory": {
-            "inventory": 8,
-            "backlog": 0,
-            "coverage": 2.857142857142857,
-            "demand_rate": 2.8,
+            "coverage": 8.16326530612245,
+            "demand_rate": 1.96,
             "suggested_order": 0,
             "orders_placed": 0,
             "orders_received": 0,
             "shipments_created": 0,
             "bullwhip_risk": false,
             "stockout_risk": false,
-            "total_cost": 16.0
+            "total_cost": 38.0
+          },
+          "Distributor": {
+            "inventory": 16,
+            "backlog": 0,
+            "coverage": 8.16326530612245,
+            "demand_rate": 1.96,
+            "suggested_order": 0,
+            "orders_placed": 0,
+            "orders_received": 0,
+            "shipments_created": 0,
+            "bullwhip_risk": false,
+            "stockout_risk": false,
+            "total_cost": 38.0
+          },
+          "Factory": {
+            "inventory": 12,
+            "backlog": 0,
+            "coverage": 6.122448979591836,
+            "demand_rate": 1.96,
+            "suggested_order": 0,
+            "orders_placed": 0,
+            "orders_received": 0,
+            "shipments_created": 0,
+            "bullwhip_risk": false,
+            "stockout_risk": false,
+            "total_cost": 30.0
           }
         }
       },
@@ -203,9 +203,9 @@
         "demand": 4,
         "actors": {
           "Retailer": {
-            "inventory": 20,
-            "backlog": 0,
-            "coverage": 3.8639876352395675,
+            "inventory": 0,
+            "backlog": 8,
+            "coverage": 0.0,
             "demand_rate": 5.176,
             "suggested_order": 0,
             "orders_placed": 0,
@@ -213,46 +213,46 @@
             "shipments_created": 0,
             "bullwhip_risk": false,
             "stockout_risk": false,
-            "total_cost": 18.0
+            "total_cost": 28.0
           },
           "Wholesaler": {
-            "inventory": 20,
+            "inventory": 16,
             "backlog": 0,
-            "coverage": 1.8268176835951773,
-            "demand_rate": 10.948,
-            "suggested_order": 13,
-            "orders_placed": 1,
+            "coverage": 11.661807580174926,
+            "demand_rate": 1.372,
+            "suggested_order": 0,
+            "orders_placed": 0,
             "orders_received": 0,
             "shipments_created": 0,
             "bullwhip_risk": false,
-            "stockout_risk": true,
-            "total_cost": 36.0
+            "stockout_risk": false,
+            "total_cost": 38.0
           },
           "Distributor": {
-            "inventory": 20,
+            "inventory": 16,
             "backlog": 0,
-            "coverage": 4.291845493562231,
-            "demand_rate": 4.66,
-            "suggested_order": 0,
-            "orders_placed": 0,
-            "orders_received": 0,
-            "shipments_created": 1,
-            "bullwhip_risk": false,
-            "stockout_risk": false,
-            "total_cost": 36.0
-          },
-          "Factory": {
-            "inventory": 8,
-            "backlog": 0,
-            "coverage": 4.081632653061225,
-            "demand_rate": 1.96,
+            "coverage": 11.661807580174926,
+            "demand_rate": 1.372,
             "suggested_order": 0,
             "orders_placed": 0,
             "orders_received": 0,
             "shipments_created": 0,
             "bullwhip_risk": false,
             "stockout_risk": false,
-            "total_cost": 20.0
+            "total_cost": 38.0
+          },
+          "Factory": {
+            "inventory": 12,
+            "backlog": 0,
+            "coverage": 8.746355685131196,
+            "demand_rate": 1.372,
+            "suggested_order": 0,
+            "orders_placed": 0,
+            "orders_received": 0,
+            "shipments_created": 0,
+            "bullwhip_risk": false,
+            "stockout_risk": false,
+            "total_cost": 30.0
           }
         }
       },
@@ -261,9 +261,9 @@
         "demand": 4,
         "actors": {
           "Retailer": {
-            "inventory": 30,
-            "backlog": 0,
-            "coverage": 6.219936971305358,
+            "inventory": 0,
+            "backlog": 12,
+            "coverage": 0.0,
             "demand_rate": 4.8232,
             "suggested_order": 0,
             "orders_placed": 0,
@@ -271,61 +271,61 @@
             "shipments_created": 0,
             "bullwhip_risk": false,
             "stockout_risk": false,
-            "total_cost": 33.0
+            "total_cost": 28.0
           },
           "Wholesaler": {
-            "inventory": 29,
+            "inventory": 16,
             "backlog": 0,
-            "coverage": 3.78412234459001,
-            "demand_rate": 7.6636,
+            "coverage": 16.65972511453561,
+            "demand_rate": 0.9604,
             "suggested_order": 0,
             "orders_placed": 0,
             "orders_received": 0,
             "shipments_created": 0,
             "bullwhip_risk": false,
             "stockout_risk": false,
-            "total_cost": 50.5
+            "total_cost": 38.0
           },
           "Distributor": {
-            "inventory": 20,
+            "inventory": 16,
             "backlog": 0,
-            "coverage": 2.7925160569673277,
-            "demand_rate": 7.162,
-            "suggested_order": 2,
-            "orders_placed": 1,
-            "orders_received": 0,
-            "shipments_created": 0,
-            "bullwhip_risk": false,
-            "stockout_risk": true,
-            "total_cost": 46.0
-          },
-          "Factory": {
-            "inventory": 8,
-            "backlog": 0,
-            "coverage": 5.830903790087463,
-            "demand_rate": 1.372,
+            "coverage": 16.65972511453561,
+            "demand_rate": 0.9604,
             "suggested_order": 0,
             "orders_placed": 0,
             "orders_received": 0,
-            "shipments_created": 1,
+            "shipments_created": 0,
             "bullwhip_risk": false,
             "stockout_risk": false,
-            "total_cost": 24.0
+            "total_cost": 38.0
+          },
+          "Factory": {
+            "inventory": 12,
+            "backlog": 0,
+            "coverage": 12.494793835901708,
+            "demand_rate": 0.9604,
+            "suggested_order": 0,
+            "orders_placed": 0,
+            "orders_received": 0,
+            "shipments_created": 0,
+            "bullwhip_risk": false,
+            "stockout_risk": false,
+            "total_cost": 30.0
           }
         }
       }
     ],
     "final_costs": {
-      "Retailer": 33.0,
-      "Wholesaler": 50.5,
-      "Distributor": 46.0,
-      "Factory": 24.0
+      "Retailer": 28.0,
+      "Wholesaler": 38.0,
+      "Distributor": 38.0,
+      "Factory": 30.0
     },
-    "total_cost": 153.5
+    "total_cost": 134.0
   },
   "performance": {
-    "retailer_service_level": 1.0,
-    "average_inventory": 13.75,
-    "total_backlog": 0
+    "retailer_service_level": 0.4,
+    "average_inventory": 11.0,
+    "total_backlog": 12
   }
 }

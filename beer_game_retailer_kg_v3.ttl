@@ -13,10 +13,10 @@
 # ============================================================================
 
 # Actor Definition
-bg_retailer:Retailer_Alpha a bg:Actor ;
+bg_retailer:Retailer_Alpha a bg:Retailer ;
     rdfs:label "Retailer Alpha" ;
-    bg:role "Retailer" ;
     bg:shippingDelay "2"^^xsd:integer ;
+    bg:orderDelay "1"^^xsd:integer ;
     bg:targetInventoryCoverage "2.5"^^xsd:decimal ;
     bg:orderUpToLevel "10"^^xsd:integer ;
     bg:demandSmoothingAlpha "0.3"^^xsd:decimal .
@@ -46,7 +46,7 @@ bg_retailer:CustomerDemand_Week1 a bg:CustomerDemand ;
     rdfs:label "Customer Demand Week 1" .
 
 # Metrics Week 1
-bg_retailer:Retailer_Alpha_Metrics_Week1 a bg:ActorMetrics ;
+bg_retailer:Retailer_Alpha_Metrics_W1 a bg:ActorMetrics ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_retailer:Retailer_Alpha ;
     bg:demandRate "4.0"^^xsd:decimal ;
@@ -56,6 +56,8 @@ bg_retailer:Retailer_Alpha_Metrics_Week1 a bg:ActorMetrics ;
     bg:suggestedOrderQuantity "4"^^xsd:integer ;
     bg:totalCost "12.0"^^xsd:decimal ;
     rdfs:label "Retailer Metrics Week 1" .
+
+bg_retailer:Retailer_Alpha bg:hasMetrics bg_retailer:Retailer_Alpha_Metrics_W1 .
 
 # Order Week 1 - Created BY Retailer, sent TO Wholesaler
 # V3: Only in Retailer repo (Wholesaler sees it via federation)

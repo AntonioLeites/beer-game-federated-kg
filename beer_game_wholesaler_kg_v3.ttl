@@ -15,10 +15,10 @@
 # ============================================================================
 
 # Actor Definition
-bg_wholesaler:Wholesaler_Beta a bg:Actor ;
+bg_wholesaler:Wholesaler_Beta a bg:Wholesaler ;
     rdfs:label "Wholesaler Beta" ;
-    bg:role "Wholesaler" ;
     bg:shippingDelay "2"^^xsd:integer ;
+    bg:orderDelay "1"^^xsd:integer ;
     bg:targetInventoryCoverage "2.5"^^xsd:decimal ;
     bg:orderUpToLevel "10"^^xsd:integer ;
     bg:demandSmoothingAlpha "0.3"^^xsd:decimal .
@@ -41,7 +41,7 @@ bg_wholesaler:Inventory_Week1 a bg:Inventory ;
     rdfs:label "Wholesaler Inventory Week 1" .
 
 # Metrics Week 1
-bg_wholesaler:Wholesaler_Beta_Metrics_Week1 a bg:ActorMetrics ;
+bg_wholesaler:Wholesaler_Beta_Metrics_W1 a bg:ActorMetrics ;
     bg:forWeek bg:Week_1 ;
     bg:belongsTo bg_wholesaler:Wholesaler_Beta ;
     bg:demandRate "4.0"^^xsd:decimal ;
@@ -51,6 +51,8 @@ bg_wholesaler:Wholesaler_Beta_Metrics_Week1 a bg:ActorMetrics ;
     bg:suggestedOrderQuantity "4"^^xsd:integer ;
     bg:totalCost "12.0"^^xsd:decimal ;
     rdfs:label "Wholesaler Metrics Week 1" .
+
+bg_wholesaler:Wholesaler_Beta bg:hasMetrics bg_wholesaler:Wholesaler_Beta_Metrics_W1 .
 
 # Order Week 1 - Created BY Wholesaler, sent TO Distributor
 # V3: Only in Wholesaler repo

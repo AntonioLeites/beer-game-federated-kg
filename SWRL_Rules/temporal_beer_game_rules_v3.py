@@ -144,9 +144,8 @@ def get_temporal_rules():
                 ?week a bg:Week ;
                       bg:weekNumber ?weekNum .
                 
-                # Get actor with suggested order
-                ?actor a bg:Actor ;
-                       bg:hasMetrics ?metrics ;
+                # Get actor with suggested order (V3: any Actor subclass)
+                ?actor bg:hasMetrics ?metrics ;
                        rdfs:label ?actorName .
                 
                 ?metrics bg:forWeek ?week ;
@@ -270,8 +269,8 @@ def get_temporal_rules():
             WHERE {
                 ?week a bg:Week .
                 
-                ?actor a bg:Actor ;
-                       bg:hasMetrics ?metrics .
+                # V3: Match any Actor subclass
+                ?actor bg:hasMetrics ?metrics .
                 
                 ?metrics bg:forWeek ?week ;
                          bg:demandRate ?oldRate .
@@ -343,7 +342,8 @@ def get_temporal_rules():
                 ?actor bg:totalCost ?newTotalCost .
             }
             WHERE {
-                ?actor a bg:Actor .
+                # V3: Match any Actor subclass
+                ?actor bg:holdingCost ?anyCost .
                 
                 # Sum costs from ALL weeks (must recalculate every time)
                 # This rule is NOT idempotent by design - it accumulates costs
@@ -387,8 +387,8 @@ def get_temporal_rules():
             WHERE {
                 ?week a bg:Week .
                 
-                ?actor a bg:Actor ;
-                       bg:hasMetrics ?metrics ;
+                # V3: Match any Actor subclass
+                ?actor bg:hasMetrics ?metrics ;
                        bg:shippingDelay ?leadTime ;
                        bg:orderDelay ?orderTime .
                 
@@ -473,8 +473,8 @@ def get_temporal_rules():
                     ?metrics bg:orderPolicyCalculated "true"^^xsd:boolean .
                 }
                 
-                ?actor a bg:Actor ;
-                       bg:shippingDelay ?leadTime ;
+                # V3: Accept any Actor subclass (Retailer, Wholesaler, Distributor, Factory)
+                ?actor bg:shippingDelay ?leadTime ;
                        bg:orderDelay ?reviewPeriod .
 
                 ?inv a bg:Inventory ;
@@ -911,8 +911,10 @@ class TemporalBeerGameRuleExecutor:
             WHERE {{
                 ?shipment a bg:Shipment ;
                           bg:shippedTo <{actor_uri}> ;
-                          bg:arrivalWeek "{week_number}"^^xsd:integer ;
+                          bg:arrivalWeek ?arrivalWeek ;
                           bg:shippedQuantity ?qty .
+                
+                FILTER(?arrivalWeek = {week_number})
             }}
         """
         
@@ -1428,8 +1430,8 @@ class TemporalBeerGameRuleExecutor:
                 
                 SELECT ?inv ?backlog ?coverage ?suggested ?cost
                 WHERE {{
-                    ?actor a bg:Actor ;
-                           rdfs:label ?actorLabel .
+                    # V3: Match any Actor subclass
+                    ?actor rdfs:label ?actorLabel .
                     
                     # Get inventory
                     OPTIONAL {{
