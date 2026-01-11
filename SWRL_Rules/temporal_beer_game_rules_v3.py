@@ -98,6 +98,7 @@ def get_temporal_rules():
                 BIND(COALESCE(?demand, 0) AS ?demandThisWeek)
                 
                 # Calculate new inventory (force integer types)
+                # Inventory = old + incoming - demand - old_backlog
                 BIND(xsd:integer(?oldInv) + xsd:integer(?incomingShipments) AS ?afterArrival)
                 BIND(xsd:integer(?demandThisWeek) + xsd:integer(?oldBacklog) AS ?totalNeed)
                 
@@ -868,6 +869,87 @@ class TemporalBeerGameRuleExecutor:
         
         return 0  # No demand found
     
+    def query_outgoing_shipments(self, week_number, actor_uri, actor_repo):
+        """
+        V3: Query outgoing shipments created THIS week (local query)
+        
+        Note: Now that CREATE SHIPMENTS executes BEFORE UPDATE INVENTORY,
+        we can query current week's shipments.
+        
+        Returns: Total quantity of shipments sent by this actor this week
+        """
+        query = f"""
+            PREFIX bg: <http://beergame.org/ontology#>
+            
+            SELECT (SUM(?qty) as ?totalOutgoing)
+            WHERE {{
+                ?shipment a bg:Shipment ;
+                          bg:forWeek bg:Week_{week_number} ;
+                          bg:shippedFrom <{actor_uri}> ;
+                          bg:shippedQuantity ?qty .
+            }}
+        """
+        
+        # Query local repo (shipments are created locally)
+        endpoint = f"{self.base_url}/repositories/{actor_repo}"
+        headers = {"Accept": "application/sparql-results+json"}
+        
+        try:
+            response = self.session.post(
+                endpoint,
+                data={"query": query},
+                headers=headers,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                results = response.json()
+                bindings = results.get("results", {}).get("bindings", [])
+                
+                if bindings and bindings[0].get("totalOutgoing"):
+                    total = int(bindings[0]["totalOutgoing"]["value"])
+                    print(f"      📤 Outgoing shipments (Week {week_number}) for {actor_uri.split('#')[1]}: {total}")
+                    return total
+                else:
+                    return 0
+            else:
+                print(f"      ⚠️  Outgoing query failed: HTTP {response.status_code}")
+                return 0
+                
+        except Exception as e:
+            print(f"      ✗ Outgoing query error: {e}")
+            return 0
+    
+    def set_temp_outgoing_shipments(self, week_number, actor_uri, actor_repo, quantity):
+        """
+        V3 Helper: Set temporary property for outgoing shipments
+        """
+        update = f"""
+            PREFIX bg: <http://beergame.org/ontology#>
+            
+            INSERT {{
+                ?inv bg:tempOutgoingShipments {quantity} .
+            }}
+            WHERE {{
+                ?inv a bg:Inventory ;
+                     bg:forWeek bg:Week_{week_number} ;
+                     bg:belongsTo <{actor_uri}> .
+            }}
+        """
+        
+        endpoint = f"{self.base_url}/repositories/{actor_repo}/statements"
+        
+        try:
+            response = self.session.post(
+                endpoint,
+                data=update,
+                headers={"Content-Type": "application/sparql-update"},
+                timeout=10
+            )
+            return response.status_code == 204
+        except:
+            return False
+    
     def set_temp_demand(self, week_number, actor_uri, actor_repo, demand):
         """
         V3 Helper: Set temporary property for demand
@@ -1109,13 +1191,19 @@ class TemporalBeerGameRuleExecutor:
     
     def query_observed_demand_federated(self, week_number, actor_uri, actor_repo):
         """
-        V3 NEW: Query observed demand using BG_Supply_Chain federation
+        V3: Query observed demand using BG_Supply_Chain federation
         
         For Retailer: Uses CustomerDemand (local, current week)
         For others: Uses incoming Orders (federated query, PREVIOUS week)
         
-        Note: Orders are queried from week N-1 because orders for week N 
-              haven't been created yet when DEMAND RATE SMOOTHING executes.
+        DESIGN DECISION - 1 Week Information Lag:
+        Orders are queried from week N-1 because:
+        1. Orders Week N are created AFTER demand rate calculation
+        2. This creates a realistic information processing delay
+        3. Avoids circular dependency in rule execution order
+        
+        This lag models real supply chain information flow where upstream
+        actors react to orders with a small delay.
         
         Returns: Observed demand quantity
         """
@@ -1152,15 +1240,16 @@ class TemporalBeerGameRuleExecutor:
             pass
         
         # No customer demand, query incoming orders from PREVIOUS week (federated)
-        # We use week N-1 because orders for week N haven't been created yet
+        # Design decision: Use N-1 for realistic information lag
+        # This creates a 1-week delay in upstream actors perceiving demand changes
         prev_week = week_number - 1
         if prev_week < 1:
-            return None  # No previous week
+            return 0
         
         orders_query = f"""
             PREFIX bg: <http://beergame.org/ontology#>
             
-            SELECT (AVG(?qty) as ?avgQty)
+            SELECT (SUM(?qty) as ?totalOrders)
             WHERE {{
                 ?order a bg:Order ;
                        bg:forWeek bg:Week_{prev_week} ;
@@ -1181,14 +1270,14 @@ class TemporalBeerGameRuleExecutor:
             
             if response.status_code == 200:
                 bindings = response.json().get("results", {}).get("bindings", [])
-                if bindings and bindings[0].get("avgQty"):
-                    avg_qty = float(bindings[0]["avgQty"]["value"])
-                    print(f"      📦 Federated orders (Week {prev_week}) for {actor_uri.split('#')[1]}: {avg_qty}")
-                    return avg_qty
+                if bindings and bindings[0].get("totalOrders"):
+                    total_orders = float(bindings[0]["totalOrders"]["value"])
+                    print(f"      📦 Federated orders (Week {prev_week} → lag) for {actor_uri.split('#')[1]}: {total_orders}")
+                    return total_orders
         except Exception as e:
             print(f"      ✗ Federated demand query error: {e}")
         
-        return None  # No demand observed
+        return 0  # No demand observed
     
     def set_temp_observed_demand(self, week_number, actor_uri, actor_repo, observed_demand):
         """
@@ -1323,13 +1412,13 @@ class TemporalBeerGameRuleExecutor:
         - No manual propagation needed (federation handles visibility)
         
         Rule execution order based on dependencies:
-        1. Demand Rate Smoothing (updates perception)
+        1. Demand Rate Smoothing (updates perception with 1-week lag)
         2. Update Inventory (V3: with federated shipment query)
         3. Inventory Coverage (calculates metrics)
         4. Stockout Risk Detection (identifies problems)
         5. Order-Up-To Policy (suggests quantities)
         6. Create Orders (generates documents)
-        7. Create Shipments (responds to orders)
+        7. Create Shipments (V3: responds to orders)
         8. Bullwhip Detection (analyzes patterns)
         9. Total Cost Calculation (computes costs)
         """
@@ -1344,23 +1433,23 @@ class TemporalBeerGameRuleExecutor:
         executed = 0
         failed = 0
         
-        # Step 1: V3 DEMAND RATE SMOOTHING with federated demand queries
+        # Step 1: V3 DEMAND RATE SMOOTHING (first pass)
         self.execute_demand_rate_smoothing_with_federation(week_number)
-        executed += len(repositories)  # Count as success for all repos
+        executed += len(repositories)
         
         # Step 2: V3 UPDATE INVENTORY with federated shipment queries
         self.execute_inventory_update_with_federation(week_number)
-        executed += len(repositories)  # Count as success for all repos
+        executed += len(repositories)
         
         # Step 3-6: Continue with metrics and policy rules
-        pre_shipment_rules = [
+        pre_order_rules = [
             "INVENTORY COVERAGE CALCULATION",
             "STOCKOUT RISK DETECTION",
             "ORDER-UP-TO POLICY",
             "CREATE ORDERS FROM SUGGESTED"
         ]
         
-        for rule_name in pre_shipment_rules:
+        for rule_name in pre_order_rules:
             if rule_name not in self.rules:
                 print(f"⚠️  Rule '{rule_name}' not found, skipping")
                 continue
@@ -1391,7 +1480,7 @@ class TemporalBeerGameRuleExecutor:
             if orders:
                 self.create_shipments_from_federated_orders(week_number, actor_uri, actor_repo, orders)
         
-        executed += len(repositories)  # Count as success for all repos
+        executed += len(repositories)
         
         # Step 8-9: Continue with analysis rules
         post_shipment_rules = [
