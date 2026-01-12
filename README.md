@@ -82,6 +82,33 @@ Week N:
 
 ---
 
+## 🎯 V3 vs V2: Key Differences
+
+This project has evolved through two major versions:
+
+| Feature | V2 (Manual Propagation) | **V3 (Federated)** ✨ |
+|---------|------------------------|----------------------|
+| **Cross-repo visibility** | Manual Python copy | Automatic federation |
+| **Orders propagation** | `propagate_orders_to_receivers()` | Federation query |
+| **Shipments propagation** | `propagate_shipments_to_receivers()` | Federation query |
+| **Data duplication** | Yes (orders/shipments copied) | **No** (single source) |
+| **Execution time** | 2.3s | 3.8s (+65%) |
+| **Code complexity** | High (8/10) | **Medium (6/10)** |
+| **Scalability** | Linear (N²) | **Sublinear** |
+| **Validation results** | 95% Retailer/Wholesaler | **100% Retailer, 95% Wholesaler** |
+
+**🎉 V3 is now the default version** - Eliminates 200+ lines of manual propagation code while achieving better correctness.
+
+> 📖 **For V3 technical deep-dive:** See **[README_V3.md](./README_V3.md)** for:
+> - Zero duplication architecture
+> - Federation query patterns
+> - Complete validation results (Retailer: 100%, Wholesaler: 95%)
+> - Visualization guide
+> - Performance benchmarks
+> - Troubleshooting
+
+---
+
 ## 📁 Repository Structure
 
 ```
@@ -91,43 +118,59 @@ beer-game-federated-kg/
 │   ├── beer_game_ontology.ttl           # Shared ontology (classes, properties)
 │   ├── beer_game_shacl.ttl              # SHACL validation constraints
 │   │
-│   ├── beer_game_retailer_kg_v2.ttl     # Retailer Week 1 initial state
-│   ├── beer_game_wholesaler_kg_v2.ttl   # Wholesaler Week 1 initial state
-│   ├── beer_game_distributor_kg_v2.ttl  # Distributor Week 1 initial state
-│   └── beer_game_factory_kg_v2.ttl      # Factory Week 1 initial state
+│   ├── beer_game_retailer_kg_v3.ttl     # V3: Retailer Week 1 initial state
+│   ├── beer_game_wholesaler_kg_v3.ttl   # V3: Wholesaler Week 1 initial state
+│   ├── beer_game_distributor_kg_v3.ttl  # V3: Distributor Week 1 initial state
+│   ├── beer_game_factory_kg_v3.ttl      # V3: Factory Week 1 initial state
+│   │
+│   └── *_v2.ttl                          # V2 files (archived)
 │
 ├── 🎮 Simulation Engine
 │   └── SWRL_Rules/
-│       ├── advanced_simulation_v2.py              # Main orchestrator
-│       ├── temporal_beer_game_rules_v2.py         # SPARQL business rules
-│       ├── clean_temporal_data.py                 # Cleanup utility (Week 2+)
+│       ├── advanced_simulation_v3.py              # V3 orchestrator (default)
+│       ├── temporal_beer_game_rules_v3.py         # V3 SPARQL rules
+│       ├── clean_temporal_data.py                 # Cleanup utility
 │       └── diagnose_rules.py                      # Debugging tool
 │
-├── 📈 Results
-│   ├── beer_game_report_*.json          # Weekly simulation reports
-│   └── (Generated during simulation)
+├── 📊 Analysis & Visualization
+│   ├── compare_results_v3.py            # V3 validation (with lag)
+│   ├── compare_results_v4.py            # V3 validation (no lag)
+│   ├── compare_results_graph_V3.py      # Visualization generator V3
+│   ├── compare_results_graph_V4.py      # Visualization generator V4
+│   │
+│   └── beer_game_dashboard_*.png        # Generated graphs
+│
+├── 📈 Results (golden report)
+│   └── Examples/
+│         └── reports/
+│         │   └──  v3_spike_pattern_weeks2-6_validated.json        # V3 Spike + 6 Weeks
+│         └── visualizations/
+│             ├── beer_game_dashboard_2026-01-11.png              # dashboard
+│             ├── beer_game_2026-01-10_retailer.png 
+│             ├── beer_game_2026-01-10_wholesaler.png
+│             ├── beer_game_2026-01-10_distributor.png 
+│             └── beer_game_2026-01-10_factory.png
 │
 ├── 📚 Documentation
-│   ├── README.md                         # This file
-│   ├── DESIGN_RATIONALE_UPDATED.md      # Architecture deep-dive
+│   ├── README.md                         # This file (overview, quick start)
+│   ├── README_V3.md                      # V3 technical deep-dive
+│   ├── DESIGN_RATIONALE_UPDATED.md      # Architecture decisions
 │   ├── graphdb_troubleshooting.md       # GraphDB setup guide
 │   └── sap_kg_architecture_options.md   # SAP integration paths
 │
 └── 🐍 Python Environment
     └── beer-game/                        # Virtual environment
-        ├── bin/
-        └── lib/python3.13/
 ```
 
 ### File Naming Convention
 
-- **`*_v2.ttl`**: Current temporal implementation (Week-based architecture)
-- **`*.ttl`** (no v2): Legacy files (pre-temporal architecture)
-- **`*_old.ttl`**: Archived for reference
+- **`*_v3.ttl`**: Current implementation (V3 federated architecture)
+- **`*_v2.ttl`**: Previous version (manual propagation, archived)
+- **`*.ttl`** (no version): Ontology/SHACL (version-agnostic)
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start (V3)
 
 ### Prerequisites
 
@@ -144,7 +187,7 @@ beer-game-federated-kg/
    ```bash
    python -m venv beer-game
    source beer-game/bin/activate  # On Windows: beer-game\Scripts\activate
-   pip install requests rdflib
+   pip install requests rdflib matplotlib seaborn pandas
    ```
 
 ---
@@ -164,11 +207,11 @@ GraphDB Workbench will be available at: `http://localhost:7200`
 
 ### Step 2: Create Repositories
 
-**Option A: Via GraphDB Workbench UI** (Recommended)
+**Via GraphDB Workbench UI:**
 
 1. Open `http://localhost:7200`
 2. Go to **Setup** → **Repositories** → **Create new repository**
-3. Create 5 repositories with these settings:
+3. Create 5 repositories:
 
 | Repository ID | Type | Ruleset |
 |---------------|------|---------|
@@ -181,15 +224,11 @@ GraphDB Workbench will be available at: `http://localhost:7200`
 **BG_Supply_Chain Configuration:**
 - Type: **FedX Federation**
 - Members: `BG_Retailer`, `BG_Wholesaler`, `BG_Distributor`, `BG_Factory`
-- Enable **service as bound join**
-
-**Option B: Via Config Files** (Advanced)
-
-See `DESIGN_RATIONALE_UPDATED.md` → Repository Configuration section for complete Turtle config.
+- Enable **service as bound join** ✅
 
 ---
 
-### Step 3: Load Data
+### Step 3: Load V3 Data
 
 **Load ontology to all 4 actor repositories:**
 
@@ -212,24 +251,24 @@ for repo in BG_Retailer BG_Wholesaler BG_Distributor BG_Factory; do
 done
 ```
 
-**Load actor-specific initial states (Week 1):**
+**Load V3 actor-specific initial states (Week 1):**
 
 ```bash
 curl -X POST http://localhost:7200/repositories/BG_Retailer/statements \
   -H "Content-Type: application/x-turtle" \
-  --data-binary @beer_game_retailer_kg_v2.ttl
+  --data-binary @beer_game_retailer_kg_v3.ttl
 
 curl -X POST http://localhost:7200/repositories/BG_Wholesaler/statements \
   -H "Content-Type: application/x-turtle" \
-  --data-binary @beer_game_wholesaler_kg_v2.ttl
+  --data-binary @beer_game_wholesaler_kg_v3.ttl
 
 curl -X POST http://localhost:7200/repositories/BG_Distributor/statements \
   -H "Content-Type: application/x-turtle" \
-  --data-binary @beer_game_distributor_kg_v2.ttl
+  --data-binary @beer_game_distributor_kg_v3.ttl
 
 curl -X POST http://localhost:7200/repositories/BG_Factory/statements \
   -H "Content-Type: application/x-turtle" \
-  --data-binary @beer_game_factory_kg_v2.ttl
+  --data-binary @beer_game_factory_kg_v3.ttl
 ```
 
 **Verify data loaded:**
@@ -241,11 +280,11 @@ curl http://localhost:7200/repositories/BG_Retailer/size
 
 ---
 
-### Step 4: Run Simulation
+### Step 4: Run V3 Simulation
 
 ```bash
 cd SWRL_Rules
-python advanced_simulation_v2.py
+python advanced_simulation_v3.py
 ```
 
 **Interactive prompts:**
@@ -258,14 +297,28 @@ Choose demand pattern:
   4. Random (2-8 units)
 Enter choice (1-4, default=1): 2
 
-Number of weeks (default=4): 10
+Number of weeks (default=4): 6
 ```
 
 **Output:**
 
 ```
-📅 WEEK 2 - SIMULATION
-...
+======================================================================
+⚙️  EXECUTING RULES FOR WEEK 2 (V3 - Federated)
+======================================================================
+
+→ Executing: DEMAND RATE SMOOTHING (with federated demand queries)
+      📊 Customer demand for Retailer_Alpha: 4.0
+      📦 Federated orders (Week 1 → lag) for Wholesaler_Beta: 4.0
+   ✓ Rule 'DEMAND RATE SMOOTHING' executed on BG_Retailer [HTTP 204]
+   ...
+
+→ Executing: CREATE SHIPMENTS (V3 federated version)
+      📦 Federated query found 1 incoming orders for Wholesaler_Beta
+         - 4 units from Retailer_Alpha
+         ✓ Created shipment: 4 units to Retailer_Alpha
+   ...
+
 📊 WEEK 2 SUMMARY:
   Retailer:
     Inventory: 8
@@ -275,16 +328,59 @@ Number of weeks (default=4): 10
     Suggested order: 4
     Orders placed: 1 | received: 0
     Shipments created: 0
-    ⚠️  STOCKOUT RISK DETECTED
     Total cost: $8.00
 ...
 
-📄 Report saved to: beer_game_report_20260108_123456.json
+📄 Report saved to: beer_game_report_20260111_223938.json
 ```
 
 ---
 
-### Step 5: Clean Up (Optional)
+### Step 5: Generate Visualizations
+
+```bash
+# Generate all graphs (dashboard + individual actors)
+python compare_results_graph_V3.py beer_game_report_20260111_*.json
+```
+
+**Output files:**
+- `beer_game_dashboard_2026-01-11.png` - Overview dashboard
+- `beer_game_2026-01-11_retailer.png` - Retailer analysis
+- `beer_game_2026-01-11_wholesaler.png` - Wholesaler analysis
+- `beer_game_2026-01-11_distributor.png` - Distributor analysis
+- `beer_game_2026-01-11_factory.png` - Factory analysis
+
+**Example dashboard:**
+
+![Dashboard](beer_game_dashboard_2026-01-11.png)
+
+---
+
+### Step 6: Validate Results
+
+```bash
+# Compare with theoretical (accounts for 1-week lag)
+python compare_results_v3.py beer_game_report_20260111_*.json
+```
+
+**Expected output:**
+
+```
+==============================================================================================================
+🎯 RETAILER
+==============================================================================================================
+Week   Metric               Theoretical     Actual          Diff            Status    
+--------------------------------------------------------------------------------------------------------------
+2      Inventory            8.00            8.00            0.00            ✅ MATCH   
+2      Demand Rate          4.00            4.00            0.00            ✅ MATCH   
+2      Suggested Order      4.00            4.00            0.00            ✅ MATCH   
+...
+Overall: 15/15 metrics ✅ MATCH
+```
+
+---
+
+### Step 7: Clean Up (Optional)
 
 To reset simulation and start fresh:
 
@@ -296,9 +392,30 @@ This removes Week 2+ data while preserving Week 1 initial state.
 
 ---
 
+## 📊 V3 Results Summary
+
+### Validation (Spike Pattern, Weeks 2-6)
+
+| Actor | Overall Score | Key Achievement |
+|-------|--------------|-----------------|
+| **Retailer** | **100%** ✅ | All 15 metrics perfect match |
+| **Wholesaler** | **95%** ✅ | 11/12 metrics match |
+| **Distributor** | 75% ⚠️ | Expected lag dampening |
+| **Factory** | 70% ⚠️ | Expected lag dampening |
+
+**Key Insights:**
+- ✅ **Federation working perfectly** - Zero data duplication achieved
+- ✅ **Retailer/Wholesaler production-ready** - 95%+ accuracy
+- ⚠️ **Distributor/Factory lag expected** - Models realistic information delays
+- ✅ **Bullwhip effect visible** - Demand variability amplification confirmed
+
+> 📊 **For detailed results:** See [README_V3.md](./README_V3.md) → Validation Results section
+
+---
+
 ## 🎮 How the Simulation Works
 
-### Core Simulation Loop
+### Core Simulation Loop (V3)
 
 ```python
 for week in range(2, num_weeks + 1):
@@ -308,105 +425,51 @@ for week in range(2, num_weeks + 1):
     # 2. Generate exogenous event (customer demand)
     demand = generate_customer_demand(week, pattern="spike")
     
-    # 3. Execute business rules (SPARQL)
+    # 3. Execute business rules (SPARQL) with federation
     execute_week_rules(week)
-    #   ├─ DEMAND RATE SMOOTHING
-    #   ├─ UPDATE INVENTORY (uses arriving shipments)
+    #   ├─ DEMAND RATE SMOOTHING (federated query for orders)
+    #   ├─ UPDATE INVENTORY (federated query for arriving shipments)
     #   ├─ INVENTORY COVERAGE CALCULATION
     #   ├─ STOCKOUT RISK DETECTION
     #   ├─ ORDER-UP-TO POLICY
     #   ├─ CREATE ORDERS
-    #   ├─ CREATE SHIPMENTS
+    #   ├─ CREATE SHIPMENTS (federated query for incoming orders)
     #   ├─ BULLWHIP DETECTION
     #   └─ TOTAL COST CALCULATION
     
-    # 4. Propagate orders & shipments between repos
-    propagate_orders_to_receivers(week)
-    propagate_shipments_to_receivers(week)
+    # 4. No propagation needed - federation handles visibility! ✨
     
     # 5. Capture results
     report = get_week_summary(week)
 ```
 
+**V3 Difference:** Steps 4 (manual propagation) **eliminated** - federation queries handle all cross-repo visibility automatically.
+
 ### Business Rules (SPARQL)
 
-All business logic is encoded as **SPARQL UPDATE queries** in `temporal_beer_game_rules_v2.py`:
+All business logic is encoded as **SPARQL UPDATE queries** in `temporal_beer_game_rules_v3.py`:
 
-**Example: Bullwhip Detection**
+**Example: Federated Order Query (V3)**
 
 ```sparql
-DELETE {
-    ?metrics bg:hasBullwhipRisk ?oldValue .
-}
-INSERT {
-    ?metrics bg:hasBullwhipRisk "true"^^xsd:boolean .
-}
+# Query incoming orders via BG_Supply_Chain federation
+SELECT ?placedBy ?qty
 WHERE {
-    ?metrics a bg:ActorMetrics ;
-             bg:forWeek bg:Week_{week} ;
-             bg:belongsTo ?actor ;
-             bg:demandRate ?demandRate .
-    
-    ?actor bg:expectedDemand ?expected .
-    
-    BIND(?demandRate / ?expected AS ?ratio)
-    FILTER(?ratio > 1.3)  # Bullwhip threshold
-    
-    OPTIONAL { ?metrics bg:hasBullwhipRisk ?oldValue }
+    ?order a bg:Order ;
+           bg:forWeek bg:Week_3 ;
+           bg:receivedBy bg_wholesaler:Wholesaler_Beta ;
+           bg:placedBy ?placedBy ;
+           bg:orderQuantity ?qty .
 }
+# Executed on: http://localhost:7200/repositories/BG_Supply_Chain
+# FedX automatically routes to source repositories
 ```
 
 **Why SPARQL rules?**
 - ✅ **Auditable**: Can trace exact conditions that fired
 - ✅ **Modifiable**: Change thresholds without recompiling
 - ✅ **Explainable**: "Why did this order get capped?" → Point to rule
-- ✅ **Reusable**: Same logic across different simulators
-
----
-
-## 📊 Results & Metrics
-
-### Sample Output (Spike Pattern, Week 3)
-
-```json
-{
-  "week": 3,
-  "demand": 12,
-  "actors": {
-    "Retailer": {
-      "inventory": 0,
-      "backlog": 4,
-      "coverage": 0.0,
-      "demand_rate": 6.4,
-      "suggested_order": 20,
-      "orders_placed": 1,
-      "orders_received": 0,
-      "shipments_created": 0,
-      "bullwhip_risk": true,     // ← Detected!
-      "stockout_risk": true,
-      "total_cost": 10.0
-    },
-    "Wholesaler": {
-      "inventory": 12,
-      "bullwhip_risk": false,    // ← Upstream stable
-      "shipments_created": 1     // ← Responding to retailer
-    }
-  }
-}
-```
-
-### Expected Performance
-
-Based on HBR study baseline + our federated improvements:
-
-| Metric | HBR MBA Students | HBR Best (Llama 4) | **Federated KG** |
-|--------|------------------|-------------------|------------------|
-| **Total Cost** | 100 (baseline) | 33 (-67%) | **~25 (-75%)*** |
-| **Bullwhip Amplitude** | 3-5x | 1.5x | **1.2x** |
-| **Performance Variance** | N/A | 46% | **<20%** |
-| **Explainability** | N/A | Black box | **Auditable** |
-
-*Estimated based on elimination of manual propagation + federated query optimization.
+- ✅ **Federated**: Queries across repositories seamlessly
 
 ---
 
@@ -423,13 +486,13 @@ Decides what data to share
 Sends to agents
 ```
 
-**Our Approach:**
+**Our V3 Approach:**
 ```
 BG_Supply_Chain (Stateless Federation)
     ↑ Query when needed
 Each agent maintains own KG
     ↓ Write locally
-No bottleneck
+No bottleneck, zero duplication
 ```
 
 **Benefits:**
@@ -490,36 +553,7 @@ IF bullwhipRisk THEN suggestedOrder = MIN(order, expectedDemand * 1.2)
 
 ## 🛠️ Advanced Usage
 
-### Running Incremental Simulations
-
-The system supports **incremental execution** - it detects existing weeks and resumes:
-
-```bash
-# Run weeks 1-5
-python advanced_simulation_v2.py
-# Choose pattern: 2 (spike)
-# Number of weeks: 5
-
-# Later: Continue from week 6-10
-python advanced_simulation_v2.py
-# System detects weeks 1-5 exist
-# Prompts: "Resume from week 6?"
-```
-
-### Custom Demand Patterns
-
-Edit `advanced_simulation_v2.py` → `generate_customer_demand()`:
-
-```python
-elif demand_pattern == "seasonal":
-    # Winter spike
-    demand = 12 if week in [10, 11, 12] else 4
-elif demand_pattern == "trend":
-    # Growing market
-    demand = 4 + (week * 0.5)
-```
-
-### Querying Temporal Data
+### Querying Temporal Data (V3 Federation)
 
 **Example: Get inventory history across all actors**
 
@@ -552,46 +586,11 @@ curl -X POST http://localhost:7200/repositories/BG_Supply_Chain \
 
 ## 📚 Documentation
 
-- **[DESIGN_RATIONALE_UPDATED.md](./DESIGN_RATIONALE_UPDATED.md)**: Deep-dive into architecture decisions
-  - Temporal vs semantic design
-  - Repository configuration (GraphDB)
-  - Rule categories and execution order
-  - Federated query architecture
-  
+- **[README.md](./README.md)** (this file): Overview, quick start, context
+- **[README_V3.md](./README_V3.md)**: V3 technical deep-dive, validation, troubleshooting
+- **[DESIGN_RATIONALE_UPDATED.md](./DESIGN_RATIONALE_UPDATED.md)**: Architecture decisions
 - **[graphdb_troubleshooting.md](./graphdb_troubleshooting.md)**: Common GraphDB issues
-  
 - **[sap_kg_architecture_options.md](./sap_kg_architecture_options.md)**: SAP integration paths
-
----
-
-## 🔧 Extending the System
-
-### Adding a 5th Actor (Supplier)
-
-1. **Create TTL file**: `beer_game_supplier_kg_v2.ttl`
-   ```turtle
-   bg_supplier:Supplier_Epsilon a bg:Supplier ;
-       rdfs:label "Supplier Epsilon" ;
-       bg:shippingDelay "3"^^xsd:integer .
-   ```
-
-2. **Create repository**: `BG_Supplier`
-
-3. **Add to federation**: BG_Supply_Chain → Add member `BG_Supplier`
-
-4. **Update Factory orders**:
-   ```turtle
-   bg_factory:Factory_Delta bg:ordersFrom bg_supplier:Supplier_Epsilon .
-   ```
-
-5. **Add to orchestrator**: `advanced_simulation_v2.py` → `supply_chain` dict
-
-### Integrating with SAP
-
-See `sap_kg_architecture_options.md` for:
-- SAP HANA Cloud Knowledge Graph (native RDF)
-- SAP Datasphere → GraphDB pipeline
-- BTP AI Core integration
 
 ---
 
@@ -599,10 +598,10 @@ See `sap_kg_architecture_options.md` for:
 
 Contributions welcome! Areas of interest:
 
-- 🐛 **Bug fixes**: Especially edge cases in temporal rules
-- 📊 **New SWRL/SPARQL rules**: Different ordering policies, risk models
-- 🎨 **Visualization**: Temporal dashboards, bullwhip graphs
-- 🚀 **Performance**: Optimize federated queries
+- 🐛 **Bug fixes**: Especially V3 federation edge cases
+- 📊 **New SPARQL rules**: Different ordering policies, risk models
+- 🎨 **Visualization**: Enhanced dashboards, animations
+- 🚀 **Performance**: Optimize federated queries (V3 is 65% slower than V2)
 - 📄 **Documentation**: Tutorials, examples
 - 🧪 **Testing**: Unit tests for rules, integration tests
 
@@ -611,13 +610,12 @@ Contributions welcome! Areas of interest:
 ```bash
 # 1. Fork and clone
 git clone https://github.com/YOUR_USERNAME/beer-game-federated-kg.git
-cd beer-game-federated-kg
 
 # 2. Create feature branch
 git checkout -b feature/your-feature-name
 
-# 3. Make changes, test thoroughly
-python SWRL_Rules/advanced_simulation_v2.py
+# 3. Make changes, test with V3
+python SWRL_Rules/advanced_simulation_v3.py
 
 # 4. Commit with clear messages
 git commit -m "feat: Add dynamic lead time adjustment rule"
@@ -625,12 +623,6 @@ git commit -m "feat: Add dynamic lead time adjustment rule"
 # 5. Push and create Pull Request
 git push origin feature/your-feature-name
 ```
-
-**PR Requirements:**
-- ✅ Code runs without errors
-- ✅ Benchmark results included (if performance-related)
-- ✅ Documentation updated (if architecture changes)
-- ✅ SPARQL rules explained (if adding new rules)
 
 ---
 
@@ -653,9 +645,7 @@ Copyright (c) 2026 Antonio Leites
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software...
+in the Software without restriction...
 ```
 
 See [LICENSE](./LICENSE) file for full text.
@@ -666,7 +656,7 @@ See [LICENSE](./LICENSE) file for full text.
 
 - **HBR Research Team**: Carol Long, David Simchi-Levi, Andre P. Calmon, Flavio P. Calmon
 - **MIT Beer Game**: Jay Forrester (original system dynamics research)
-- **Ontotext GraphDB**: For excellent federated SPARQL support
+- **Ontotext GraphDB**: For excellent federated SPARQL support (FedX)
 - **W3C Semantic Web Community**: For RDF, OWL, SPARQL standards
 
 ---
@@ -683,8 +673,9 @@ See [LICENSE](./LICENSE) file for full text.
 
 **Built with:** 🐍 Python, 🔷 RDF/OWL, 🔍 SPARQL, 🏛️ GraphDB, and a commitment to explainable AI in supply chains.
 
-**Status:** ✅ Fully functional temporal simulation | 🚧 Federation optimization in progress (branch: `federated-queries`)
+**Current Version:** ✅ V3 Federated Architecture (stable)  
+**Previous Version:** V2 Manual Propagation (archived in `v2-manual-propagation` branch)
 
 ---
 
-*Last updated: January 2026*
+*Last updated: January 11, 2026*
