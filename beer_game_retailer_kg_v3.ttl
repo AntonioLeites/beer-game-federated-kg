@@ -1,0 +1,73 @@
+@prefix bg: <http://beergame.org/ontology#> .
+@prefix bg_retailer: <http://beergame.org/retailer#> .
+@prefix bg_wholesaler: <http://beergame.org/wholesaler#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# ============================================================================
+# BEER GAME RETAILER KNOWLEDGE GRAPH - V3 (Federated, No Duplication)
+# ============================================================================
+# V3 Changes:
+# - NO shipments from upstream (received via BG_Supply_Chain federation)
+# - Only entities CREATED by Retailer (orders, own inventory, metrics)
+# ============================================================================
+
+# Actor Definition
+bg_retailer:Retailer_Alpha a bg:Retailer ;
+    rdfs:label "Retailer Alpha" ;
+    bg:shippingDelay "2"^^xsd:integer ;
+    bg:orderDelay "1"^^xsd:integer ;
+    bg:targetInventoryCoverage "2.5"^^xsd:decimal ;
+    bg:orderUpToLevel "10"^^xsd:integer ;
+    bg:demandSmoothingAlpha "0.3"^^xsd:decimal .
+
+# Week 1
+bg:Week_1 a bg:Week ;
+    bg:weekNumber "1"^^xsd:integer ;
+    rdfs:label "Week 1" .
+
+# Inventory Week 1
+bg_retailer:Inventory_Week1 a bg:Inventory ;
+    bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_retailer:Retailer_Alpha ;
+    bg:currentInventory "12"^^xsd:integer ;
+    bg:backlog "0"^^xsd:integer ;
+    bg:incomingShipment "0"^^xsd:integer ;
+    bg:outgoingShipment "0"^^xsd:integer ;
+    bg:holdingCost "0.50"^^xsd:decimal ;
+    bg:backlogCost "1.00"^^xsd:decimal ;
+    rdfs:label "Retailer Inventory Week 1" .
+
+# Customer Demand Week 1
+bg_retailer:CustomerDemand_Week1 a bg:CustomerDemand ;
+    bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_retailer:Retailer_Alpha ;
+    bg:actualDemand "4"^^xsd:integer ;
+    rdfs:label "Customer Demand Week 1" .
+
+# Metrics Week 1
+bg_retailer:Retailer_Alpha_Metrics_W1 a bg:ActorMetrics ;
+    bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_retailer:Retailer_Alpha ;
+    bg:demandRate "4.0"^^xsd:decimal ;
+    bg:inventoryCoverage "3.0"^^xsd:decimal ;
+    bg:stockoutRisk "false"^^xsd:boolean ;
+    bg:bullwhipRisk "false"^^xsd:boolean ;
+    bg:suggestedOrderQuantity "4"^^xsd:integer ;
+    bg:totalCost "12.0"^^xsd:decimal ;
+    rdfs:label "Retailer Metrics Week 1" .
+
+bg_retailer:Retailer_Alpha bg:hasMetrics bg_retailer:Retailer_Alpha_Metrics_W1 .
+
+# Order Week 1 - Created BY Retailer, sent TO Wholesaler
+# V3: Only in Retailer repo (Wholesaler sees it via federation)
+bg_retailer:Order_Week1_ToWholesaler a bg:Order ;
+    bg:forWeek bg:Week_1 ;
+    bg:belongsTo bg_retailer:Retailer_Alpha ;
+    bg:placedBy bg_retailer:Retailer_Alpha ;
+    bg:receivedBy bg_wholesaler:Wholesaler_Beta ;
+    bg:orderQuantity "4"^^xsd:integer ;
+    rdfs:label "Order Week 1 from Retailer to Wholesaler" .
+
+# V3: NO Shipment_Week1_FromWholesaler here!
+# Retailer will see it via BG_Supply_Chain federation query
