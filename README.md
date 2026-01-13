@@ -10,7 +10,7 @@ This repository implements a **Federated Knowledge Graph platform** for the **Be
 
 > **"When Supply Chains Become Autonomous"**  
 > Carol Long, David Simchi-Levi, Andre P. Calmon, Flavio P. Calmon  
-> Harvard Business Review, December 11, 2024  
+> Harvard Business Review, December 11, 2025  
 > https://hbr.org/2024/12/when-supply-chains-become-autonomous
 
 The HBR study showed that AI agents can outperform humans in supply chain coordination. However, it relied on a **centralized, black-box orquestration layer**.  
@@ -322,7 +322,7 @@ This repository provides a **validated Federated Knowledge Graph platform** for 
 
 ## 📖 References
 
-- Long, C., et al. (2024). "When Supply Chains Become Autonomous." *HBR*.
+- Long, C., et al. (2025). "When Supply Chains Become Autonomous." *HBR*.
 - Forrester, J.W. (1961). *Industrial Dynamics*. MIT Press.
 
 ---
