@@ -8,7 +8,7 @@ and decision logging with full audit trail.
 
 from abc import abstractmethod
 from typing import Dict, Any, Tuple, Optional
-from base_player import Player
+from players.base_player import Player
 
 
 class AIPlayer(Player):

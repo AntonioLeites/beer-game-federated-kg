@@ -6,7 +6,7 @@ the baseline used in V3 platform validation.
 """
 
 from typing import Dict, Any
-from base_player import Player
+from players.base_player import Player
 
 
 class AlgorithmicPlayer(Player):
