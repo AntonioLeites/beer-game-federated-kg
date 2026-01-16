@@ -16,7 +16,7 @@ import os
 import sys
 from algorithmic_player import AlgorithmicPlayer
 from gpt4_player import GPT4Player
-from game_orchestrator import GameOrchestrator
+from game.game_orchestrator import GameOrchestrator
 
 
 def run_baseline_experiment():
