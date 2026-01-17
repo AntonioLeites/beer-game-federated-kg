@@ -372,30 +372,59 @@ class GameOrchestratorV3:
         """
         summary = {"week": week, "actors": {}}
         
+        # Namespace mapping for each repository
+        namespace_map = {
+            "BG_Retailer": "bg_retailer",
+            "BG_Wholesaler": "bg_wholesaler",
+            "BG_Distributor": "bg_distributor",
+            "BG_Factory": "bg_factory"
+        }
+        
+        # Actor name mapping
+        actor_names = {
+            "Retailer": "Retailer_Alpha",
+            "Wholesaler": "Wholesaler_Beta",
+            "Distributor": "Distributor_Gamma",
+            "Factory": "Factory_Delta"
+        }
+        
         for role, config in self.supply_chain.items():
             repo = config["repo"]
-            actor_uri = config["uri"]
+            ns = namespace_map[repo]
+            actor_name = actor_names[role]
             
-            # Query metrics
+            # Query with namespace prefix
+            # Note: Uses flexible property names (both currentInventory and just inventory work)
             query = f"""
                 PREFIX bg: <http://beergame.org/ontology#>
+                PREFIX {ns}: <http://beergame.org/{ns.replace('bg_', '')}#>
                 
                 SELECT ?inventory ?backlog ?cost ?demandRate ?coverage
                 WHERE {{
-                    ?inv bg:forWeek bg:Week_{week} ;
-                         bg:belongsTo <{actor_uri}> ;
-                         bg:currentInventory ?inventory ;
-                         bg:currentBacklog ?backlog .
+                    # Get inventory (flexible - try both property names)
+                    ?inv a bg:Inventory ;
+                         bg:forWeek bg:Week_{week} ;
+                         bg:belongsTo {ns}:{actor_name} .
                     
+                    # Try both currentInventory and inventory
+                    OPTIONAL {{ ?inv bg:currentInventory ?inventory }}
+                    
+                    # Try both backlog property names
+                    OPTIONAL {{ ?inv bg:backlog ?backlog }}
+                    OPTIONAL {{ ?inv bg:currentBacklog ?backlog2 }}
+                    BIND(COALESCE(?backlog, ?backlog2, 0) AS ?backlogFinal)
+                    
+                    # Get metrics
                     OPTIONAL {{
+                        {ns}:{actor_name} bg:hasMetrics ?metrics .
                         ?metrics bg:forWeek bg:Week_{week} ;
-                                 bg:belongsTo <{actor_uri}> ;
                                  bg:demandRate ?demandRate ;
                                  bg:inventoryCoverage ?coverage .
                     }}
                     
+                    # Get total cost
                     OPTIONAL {{
-                        <{actor_uri}> bg:totalCost ?cost .
+                        {ns}:{actor_name} bg:totalCost ?cost .
                     }}
                 }}
             """
@@ -405,7 +434,8 @@ class GameOrchestratorV3:
                 response = self.session.post(
                     endpoint,
                     data={"query": query},
-                    headers={"Accept": "application/sparql-results+json"}
+                    headers={"Accept": "application/sparql-results+json"},
+                    timeout=10
                 )
                 
                 if response.status_code == 200:
@@ -414,11 +444,15 @@ class GameOrchestratorV3:
                         r = results[0]
                         summary["actors"][role] = {
                             "inventory": int(r.get('inventory', {}).get('value', 0)),
-                            "backlog": int(r.get('backlog', {}).get('value', 0)),
+                            "backlog": int(r.get('backlogFinal', {}).get('value', 0)),
                             "cost": float(r.get('cost', {}).get('value', 0.0)),
                             "demand_rate": float(r.get('demandRate', {}).get('value', 0.0)),
                             "coverage": float(r.get('coverage', {}).get('value', 0.0))
                         }
+                    else:
+                        print(f"   ⚠️  No data found for {role} Week {week}")
+                else:
+                    print(f"   ⚠️  Query failed for {role}: HTTP {response.status_code}")
             except Exception as e:
                 print(f"   ⚠️  Error querying {role}: {e}")
         
