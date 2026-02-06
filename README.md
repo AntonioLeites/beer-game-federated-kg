@@ -10,7 +10,7 @@ This repository implements a **Federated Knowledge Graph platform** for the **Be
 
 > **"When Supply Chains Become Autonomous"**  
 > Carol Long, David Simchi-Levi, Andre P. Calmon, Flavio P. Calmon  
-> Harvard Business Review, December 11, 2024  
+> Harvard Business Review, December 11, 2025  
 > https://hbr.org/2024/12/when-supply-chains-become-autonomous
 
 The HBR study showed that AI agents can outperform humans in supply chain coordination. However, it relied on a **centralized, black-box orquestration layer**.  
@@ -36,6 +36,7 @@ However, the approach exhibited critical limitations:
 | ❌ **Information overload** | More data degraded advanced models |
 
 **Root cause:** a centralized orchestrator filtered, summarized, and formatted information for the agents, leading to:
+
 - Arbitrary decisions about what data to share
 - Unstructured text prompts instead of semantic data
 - Implicit state stored in LLM memory
@@ -129,7 +130,7 @@ Examples include:
 **Why SPARQL rules?**
 
 - **Auditable:** every decision is traceable to a rule
-- **Explainable:** "_why was this happen?--" → inspect the rule
+- **Explainable:** " _why was this happen?_" → inspect the rule
 - **Modifiable:** tune thresholds without code changes
 - **Federated:** rules query across repositories transparently
 
@@ -137,6 +138,7 @@ This directly replaces black-box reasoning in LLM-only approaches.
 
 
 ---
+
 ### 4️⃣ Player-agnostic interface
 
 This Platform is **not tied to a player type:**  
@@ -162,9 +164,8 @@ Before introducing AI agents, the platform is validated using a **deterministic 
 
 - **Deterministic** - Validates correctness 
 - Very **low variance** (<5%)
--  **Fully Auditable** 
+- **Fully Auditable** 
 - **No AI randomness** masking platform issues 
-
 
 
 ---
@@ -176,6 +177,7 @@ This project is **not a fixed Beer Game simulation**.
 It is a **research platform** where different players can be plugged in and compared.
 
 ```
+
 ┌─────────────────────────────────────────────────────────┐
 │         BG_Supply_Chain (Federated Platform)            │
 │             - Temporal state (RDF/OWL)                  │

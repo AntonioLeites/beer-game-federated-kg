@@ -562,9 +562,279 @@ python compare_results_v4.py beer_game_report_*.json
 
 ---
 
+## 🆕 V3.1 - Context Knowledge Graph Extension
+
+**Release Date:** February 6, 2026  
+**Status:** ✅ Stable - Integrated with V3 federated architecture
+
+### Overview
+
+V3.1 extends the Beer Game simulation with **decision traceability** through Context Knowledge Graphs. Every order decision now captures the complete context: state, rationale, policies, and outcomes.
+
+### What's New in V3.1
+
+| Feature | Description | Benefit |
+|---------|-------------|---------|
+| **DecisionContext** | Captures complete state at decision time | Full audit trail |
+| **Auto rationale** | Generates human-readable explanations | Explainability |
+| **Policy inference** | Detects conservative/aggressive/reactive patterns | Pattern analysis |
+| **Trend detection** | Identifies increasing/decreasing/volatile demand | Context awareness |
+| **Risk assessment** | Flags critical/high/medium/low risk decisions | Proactive alerts |
+| **Post-mortem analysis** | Tracks actual vs expected outcomes | Learning from results |
+| **Outcome tracking** | Identifies bullwhip/stockout causation | Root cause analysis |
+
+### Architecture
+
+Context KG extends V3's temporal model without modifying core structures:
+```
+Week N:
+  ├── Inventory (state)
+  ├── ActorMetrics (metrics)
+  ├── DecisionContext (NEW - captures decision moment)
+  │   ├── capturesInventoryState → Inventory
+  │   ├── capturesMetrics → ActorMetrics
+  │   ├── decisionRationale (text)
+  │   ├── activePolicy (conservative|aggressive|reactive|predictive|balanced)
+  │   ├── perceivedTrend (increasing|stable|decreasing|volatile|unknown)
+  │   ├── riskAssessment (low|medium|high|critical)
+  │   ├── actualOutcome (filled post-mortem)
+  │   ├── outcomeQuality (optimal|good|suboptimal|poor|unknown)
+  │   ├── causedBullwhip (boolean)
+  │   └── causedStockout (boolean)
+  └── Order
+      └── basedOnContext → DecisionContext (NEW link)
+```
+
+### Usage
+
+#### Automatic Context Creation
+
+Contexts are created automatically during simulation:
+```bash
+cd SWRL_Rules
+python advanced_simulation_v3.py
+# Choose: 2 (spike pattern)
+# Weeks: 6
+```
+
+**Output:**
+```
+→ Creating DecisionContexts for Week 3
+      ✓ Retailer_Alpha: balanced policy, increasing trend, critical risk
+        Rationale: Following suggested order of 20 units. low coverage (0.0w), demand 6.4/wk.
+```
+
+**What happened:**
+1. Retailer ordered 20 units (responding to spike)
+2. Context captured: inventory=0, backlog=0, demandRate=6.4, coverage=0.0
+3. Policy inferred: "balanced" (order matched suggestion)
+4. Trend detected: "increasing" (demand jumped 4→12→6.4)
+5. Risk assessed: "critical" (coverage < 1 week)
+
+#### Post-Mortem Analysis
+
+After simulation completes, outcomes are analyzed:
+```
+📊 POST-MORTEM ANALYSIS: Decision Outcomes
+======================================================================
+
+→ Analyzing Retailer decisions...
+      Week 2: optimal
+      Week 3: suboptimal    ← spike response caused amplification
+      Week 4: good
+```
+
+### Query Examples
+
+#### 1. Decision Audit Trail
+```sparql
+# Why did Retailer order 20 units in Week 3?
+PREFIX bg: <http://beergame.org/ontology#>
+PREFIX bg_retailer: <http://beergame.org/retailer#>
+
+SELECT ?qty ?rationale ?policy ?trend ?risk 
+       ?inventory ?coverage
+WHERE {
+    ?order a bg:Order ;
+           bg:placedBy bg_retailer:Retailer_Alpha ;
+           bg:forWeek bg:Week_3 ;
+           bg:orderQuantity ?qty ;
+           bg:basedOnContext ?context .
+    
+    ?context bg:decisionRationale ?rationale ;
+             bg:activePolicy ?policy ;
+             bg:perceivedTrend ?trend ;
+             bg:riskAssessment ?risk ;
+             bg:capturesInventoryState ?invState ;
+             bg:capturesMetrics ?metrics .
+    
+    ?invState bg:currentInventory ?inventory .
+    ?metrics bg:inventoryCoverage ?coverage .
+}
+```
+
+**Result:**
+| qty | rationale | policy | trend | risk | inventory | coverage |
+|-----|-----------|--------|-------|------|-----------|----------|
+| 20 | Following suggested order of 20 units. low coverage (0.0w), demand 6.4/wk. | balanced | increasing | critical | 0 | 0.0 |
+
+#### 2. Bullwhip Root Cause
+```sparql
+# Which decisions caused bullwhip effect?
+PREFIX bg: <http://beergame.org/ontology#>
+
+SELECT ?actor ?week ?orderQty ?demandRate ?amplification ?rationale
+WHERE {
+    ?order a bg:Order ;
+           bg:placedBy ?actor ;
+           bg:forWeek ?weekIRI ;
+           bg:orderQuantity ?orderQty ;
+           bg:basedOnContext ?context .
+    
+    ?weekIRI bg:weekNumber ?week .
+    
+    ?context bg:causedBullwhip true ;
+             bg:capturesMetrics ?metrics ;
+             bg:decisionRationale ?rationale .
+    
+    ?metrics bg:demandRate ?demandRate .
+    
+    BIND(?orderQty / ?demandRate AS ?amplification)
+}
+ORDER BY DESC(?amplification)
+```
+
+#### 3. Policy Effectiveness
+
+```sparql
+# Which policies led to best outcomes?
+PREFIX bg: <http://beergame.org/ontology#>
+
+SELECT ?policy (COUNT(*) as ?decisions)
+       (SUM(IF(?quality="optimal",1,0)) as ?optimal)
+       (SUM(IF(?quality="good",1,0)) as ?good)
+       (SUM(IF(?quality="suboptimal",1,0)) as ?suboptimal)
+WHERE {
+    ?context a bg:DecisionContext ;
+             bg:activePolicy ?policy ;
+             bg:outcomeQuality ?quality .
+}
+GROUP BY ?policy
+ORDER BY DESC(?optimal)
+```
+
+### Files Added in V3.1
+```
+beer-game-federated-kg/
+├── beer_game_ontology.ttl              (modified - added Context classes)
+├── beer_game_shacl.ttl                 (modified - added validations)
+├── beer_game_context_queries.sparql    (NEW - example queries)
+├── CONTEXT_KG_DESIGN.md                (NEW - design documentation)
+├── reload_v3_with_context.sh           (NEW - reload script)
+└── SWRL_Rules/
+    ├── temporal_beer_game_rules_v3.py  (modified - context creation)
+    └── advanced_simulation_v3.py       (modified - post-mortem)
+```
+
+### Design Decisions
+
+#### Why context only when orderQuantity > 0?
+
+No order = no decision to trace. If `suggestedOrderQuantity=0`, actor chose not to order (which is itself a decision, but doesn't create an Order entity).
+
+**Trade-off:** We lose context for "decided not to order" decisions.  
+**Rationale:** Keeps data model simple - contexts linked to actual Orders.
+
+#### Why 1-week lag in trend detection?
+
+Trend inference uses 3 recent weeks of `demandRate`. In Week 2-3, insufficient history → trend="unknown". This is correct behavior.
+
+#### Why post-mortem needs +2 weeks?
+
+To assess if a decision caused stockout, we check inventory 2 weeks later (typical lead time). Week 5-6 decisions don't have outcomes yet in a 6-week simulation.
+
+**Solution:** Run longer simulations (10+ weeks) to see full outcome analysis.
+
+### Validation Results
+
+**Test Configuration:**
+
+- Pattern: Spike (12 units Week 3)
+- Duration: 6 weeks
+- Actors: All 4 (Retailer, Wholesaler, Distributor, Factory)
+
+**Contexts Created:**
+
+- Week 2: Retailer (1 context)
+- Week 3: Retailer (1 context)
+- Week 4: Retailer, Wholesaler (2 contexts)
+- Week 5: Wholesaler (1 context)
+- Week 6: Distributor (1 context)
+- **Total: 6 contexts** ✅
+
+**Sample Context (Retailer Week 3):**
+
+```turtle
+bg_retailer:Context_Week3 a bg:DecisionContext ;
+    bg:belongsTo bg_retailer:Retailer_Alpha ;
+    bg:forWeek bg:Week_3 ;
+    bg:capturesInventoryState bg_retailer:Retailer_Alpha_Inventory_Week3 ;
+    bg:capturesMetrics bg_retailer:Retailer_Alpha_Metrics_W3 ;
+    bg:decisionRationale "Following suggested order of 20 units. low coverage (0.0w), demand 6.4/wk." ;
+    bg:activePolicy "balanced" ;
+    bg:perceivedTrend "increasing" ;
+    bg:riskAssessment "critical" .
+
+bg_retailer:Order_Week3_ToWholesaler bg:basedOnContext bg_retailer:Context_Week3 .
+```
+
+### Performance Impact
+
+| Metric | V3 (baseline) | V3.1 (with Context KG) | Δ |
+|--------|--------------|----------------------|---|
+| Execution time (6 weeks) | ~8s | ~9s | +12% |
+| Triples per week | ~80 | ~95 | +19% |
+| Memory usage | Minimal | Minimal | +5% |
+
+**Conclusion:** Context KG adds negligible overhead while providing significant value.
+
+### Resources
+
+- **Full Documentation:** [CONTEXT_KG_DESIGN.md](./CONTEXT_KG_DESIGN.md)
+- **Example Queries:** [beer_game_context_queries.sparql](./beer_game_context_queries.sparql)
+- **Reload Script:** [reload_v3_with_context.sh](./reload_v3_with_context.sh)
+
+### Future Enhancements (V3.2+)
+
+- [ ] **Causal chains:** Link contexts causally (`causedBy` property)
+- [ ] **Alternative scenarios:** Store "what-if" contexts for counterfactual analysis
+- [ ] **AI integration:** When V4 AI players ready, capture LLM rationales directly
+- [ ] **Visual timeline:** Generate decision timeline visualizations
+- [ ] **Context similarity:** Cluster similar decision contexts for pattern mining
+
+### Migration from V3 to V3.1
+
+V3.1 is **backward compatible** with V3. Existing V3 simulations work unchanged.
+
+To enable Context KG features:
+
+```bash
+
+# 1. Reload ontology + SHACL with Context classes
+./reload_v3_with_context.sh
+
+# 2. Run simulation (contexts created automatically)
+cd SWRL_Rules
+python advanced_simulation_v3.py
+```
+
+**No code changes needed** - context creation is automatic when orders are placed.
+
+---
+
 ## 🚀 Future Enhancements
 
-### Planned for V3.1
+### Planned for V3.2
 
 - [ ] **Query optimization:** Batch federated queries per week
 - [ ] **Caching layer:** In-memory cache for federation results

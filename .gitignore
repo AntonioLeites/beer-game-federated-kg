@@ -33,3 +33,8 @@ Thumbs.db
 *.tmp
 *.bak
 *.old
+
+# Python cache  
+**/__pycache__/
+*.pyc
+
