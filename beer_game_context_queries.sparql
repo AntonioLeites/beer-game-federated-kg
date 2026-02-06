@@ -1,0 +1,318 @@
+# ============================================================
+# BEER GAME - CONTEXT KNOWLEDGE GRAPH QUERIES
+# Decision Traceability and Counterfactual Analysis
+# ============================================================
+
+PREFIX bg: <http://beergame.org/ontology#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+# ============================================================
+# QUERY 1: Full Decision Audit Trail for Specific Week
+# ============================================================
+# Purpose: Complete reconstruction of decision context
+# Use case: "Why did Retailer order 120 units in Week 5?"
+
+PREFIX bg_retailer: <http://beergame.org/retailer#>
+
+SELECT ?decision ?quantity ?context ?rationale ?policy ?trend ?risk
+       ?inventory ?backlog ?demandRate ?coverage
+WHERE {
+    # Find the order decision
+    ?decision a bg:Order ;
+              bg:placedBy bg_retailer:Retailer ;
+              bg:forWeek bg:Week5 ;
+              bg:orderQuantity ?quantity ;
+              bg:basedOnContext ?context .
+    
+    # Get decision context
+    ?context bg:decisionRationale ?rationale ;
+             bg:activePolicy ?policy ;
+             bg:perceivedTrend ?trend ;
+             bg:riskAssessment ?risk ;
+             bg:capturesInventoryState ?invState ;
+             bg:capturesMetrics ?metrics .
+    
+    # Get inventory snapshot
+    ?invState bg:currentInventory ?inventory ;
+              bg:backlog ?backlog .
+    
+    # Get metrics snapshot
+    ?metrics bg:demandRate ?demandRate ;
+             bg:inventoryCoverage ?coverage .
+}
+
+# ============================================================
+# QUERY 2: Bullwhip Analysis - Which Decisions Amplified Orders?
+# ============================================================
+# Purpose: Identify decisions that contributed to bullwhip effect
+# Use case: Post-game analysis of amplification patterns
+
+SELECT ?actor ?week ?orderQty ?demandRate ?amplification ?rationale
+WHERE {
+    ?order a bg:Order ;
+           bg:placedBy ?actor ;
+           bg:forWeek ?week ;
+           bg:orderQuantity ?orderQty ;
+           bg:basedOnContext ?context .
+    
+    ?context bg:capturesMetrics ?metrics ;
+             bg:causedBullwhip true ;
+             bg:decisionRationale ?rationale .
+    
+    ?metrics bg:demandRate ?demandRate .
+    
+    BIND(?orderQty / ?demandRate AS ?amplification)
+    
+    FILTER(?amplification > 1.5)
+}
+ORDER BY DESC(?amplification)
+
+# ============================================================
+# QUERY 3: Stockout Root Cause Analysis
+# ============================================================
+# Purpose: Trace backwards from stockout to causative decision
+# Use case: "What decision caused the Week 8 stockout?"
+
+SELECT ?stockoutWeek ?stockoutActor ?causativeWeek ?causativeDecision 
+       ?orderQty ?rationale ?perceivedTrend
+WHERE {
+    # Find stockout event
+    ?invState a bg:Inventory ;
+              bg:belongsTo ?stockoutActor ;
+              bg:forWeek ?stockoutWeek ;
+              bg:backlog ?backlog .
+    FILTER(?backlog > 0)
+    
+    # Find the decision that caused it
+    ?causativeDecision a bg:Order ;
+                       bg:placedBy ?stockoutActor ;
+                       bg:forWeek ?causativeWeek ;
+                       bg:orderQuantity ?orderQty ;
+                       bg:basedOnContext ?context .
+    
+    ?context bg:causedStockout true ;
+             bg:decisionRationale ?rationale ;
+             bg:perceivedTrend ?perceivedTrend .
+    
+    FILTER(?causativeWeek < ?stockoutWeek)
+}
+ORDER BY ?stockoutWeek ?causativeWeek
+
+# ============================================================
+# QUERY 4: Decision Quality Timeline
+# ============================================================
+# Purpose: Track decision quality evolution over time
+# Use case: "Did Wholesaler improve decision making over time?"
+
+PREFIX bg_wholesaler: <http://beergame.org/wholesaler#>
+
+SELECT ?weekNum ?orderQty ?outcomeQuality ?causedBullwhip ?causedStockout
+WHERE {
+    ?order a bg:Order ;
+           bg:placedBy bg_wholesaler:Wholesaler ;
+           bg:forWeek ?week ;
+           bg:orderQuantity ?orderQty ;
+           bg:basedOnContext ?context .
+    
+    ?week bg:weekNumber ?weekNum .
+    
+    ?context bg:outcomeQuality ?outcomeQuality ;
+             bg:causedBullwhip ?causedBullwhip ;
+             bg:causedStockout ?causedStockout .
+}
+ORDER BY ?weekNum
+
+# ============================================================
+# QUERY 5: Comparative Context Analysis
+# ============================================================
+# Purpose: Compare contexts of good vs poor decisions
+# Use case: "What differentiated optimal from poor decisions?"
+
+SELECT ?quality ?avgInventoryCoverage ?avgOrderQty ?commonPolicy ?commonTrend
+WHERE {
+    {
+        SELECT ?quality (AVG(?coverage) AS ?avgInventoryCoverage) 
+               (AVG(?qty) AS ?avgOrderQty)
+        WHERE {
+            ?order bg:basedOnContext ?context ;
+                   bg:orderQuantity ?qty .
+            
+            ?context bg:outcomeQuality ?quality ;
+                     bg:capturesMetrics ?metrics .
+            
+            ?metrics bg:inventoryCoverage ?coverage .
+        }
+        GROUP BY ?quality
+    }
+    
+    # Most common policy and trend per quality level
+    OPTIONAL {
+        SELECT ?quality (SAMPLE(?policy) AS ?commonPolicy) (SAMPLE(?trend) AS ?commonTrend)
+        WHERE {
+            ?context bg:outcomeQuality ?quality ;
+                     bg:activePolicy ?policy ;
+                     bg:perceivedTrend ?trend .
+        }
+        GROUP BY ?quality
+    }
+}
+ORDER BY ?quality
+
+# ============================================================
+# QUERY 6: Federated Cross-Actor Decision Propagation
+# ============================================================
+# Purpose: Trace how one actor's decision impacted others
+# Use case: "How did Retailer's Week 5 spike affect upstream?"
+
+SELECT ?actor ?week ?orderQty ?context ?rationale ?respondingTo
+WHERE {
+    # Retailer's decision Week 5
+    ?retailerOrder a bg:Order ;
+                   bg:placedBy ?retailerActor ;
+                   bg:forWeek bg:Week5 ;
+                   bg:orderQuantity ?retailerQty .
+    
+    ?retailerActor a bg:Retailer .
+    
+    # Find upstream responses (Week 6, 7, 8...)
+    ?upstreamOrder a bg:Order ;
+                   bg:placedBy ?actor ;
+                   bg:forWeek ?week ;
+                   bg:orderQuantity ?orderQty ;
+                   bg:basedOnContext ?context .
+    
+    ?context bg:decisionRationale ?rationale .
+    
+    ?week bg:weekNumber ?weekNum .
+    FILTER(?weekNum > 5 && ?weekNum <= 8)
+    
+    # Exclude retailer from results
+    FILTER(?actor != ?retailerActor)
+    
+    BIND(CONCAT("Responding to downstream order spike") AS ?respondingTo)
+}
+ORDER BY ?weekNum
+
+# ============================================================
+# QUERY 7: Counterfactual Analysis - Alternative Scenarios
+# ============================================================
+# Purpose: Explore "what if" scenarios with alternative contexts
+# Use case: "What if Wholesaler had ordered conservatively in Week 6?"
+
+SELECT ?actualQty ?alternativeQty ?actualOutcome ?expectedOutcome
+WHERE {
+    ?actualContext a bg:DecisionContext ;
+                   bg:belongsTo ?actor ;
+                   bg:forWeek bg:Week6 ;
+                   bg:actualOutcome ?actualOutcome .
+    
+    ?order bg:basedOnContext ?actualContext ;
+           bg:orderQuantity ?actualQty .
+    
+    # Alternative scenario (if exists)
+    ?actualContext bg:alternativeContext ?altContext .
+    
+    ?altContext bg:alternativeOrderQuantity ?alternativeQty ;
+                bg:expectedOutcome ?expectedOutcome .
+}
+
+# ============================================================
+# QUERY 8: Risk Assessment Accuracy
+# ============================================================
+# Purpose: Validate if risk assessments were accurate
+# Use case: "Were 'high risk' decisions actually problematic?"
+
+SELECT ?riskLevel (COUNT(*) AS ?decisions) 
+       (SUM(?bullwhip) AS ?bullwhipCount)
+       (SUM(?stockout) AS ?stockoutCount)
+       (AVG(?bullwhip) AS ?bullwhipRate)
+WHERE {
+    ?context a bg:DecisionContext ;
+             bg:riskAssessment ?riskLevel .
+    
+    OPTIONAL { ?context bg:causedBullwhip ?bw }
+    OPTIONAL { ?context bg:causedStockout ?so }
+    
+    BIND(IF(?bw = true, 1, 0) AS ?bullwhip)
+    BIND(IF(?so = true, 1, 0) AS ?stockout)
+}
+GROUP BY ?riskLevel
+ORDER BY ?riskLevel
+
+# ============================================================
+# QUERY 9: Policy Effectiveness Analysis
+# ============================================================
+# Purpose: Which ordering policies led to best outcomes?
+# Use case: "Should we recommend conservative or aggressive?"
+
+SELECT ?policy (COUNT(*) AS ?usageCount) 
+       ?optimalPct ?goodPct ?suboptimalPct ?poorPct
+WHERE {
+    {
+        SELECT ?policy (COUNT(*) AS ?totalDecisions)
+        WHERE {
+            ?context bg:activePolicy ?policy .
+        }
+        GROUP BY ?policy
+    }
+    
+    # Calculate outcome percentages
+    OPTIONAL {
+        SELECT ?policy 
+               (COUNT(*) * 100.0 / ?totalDecisions AS ?optimalPct)
+        WHERE {
+            ?context bg:activePolicy ?policy ;
+                     bg:outcomeQuality "optimal" .
+        }
+        GROUP BY ?policy
+    }
+    
+    OPTIONAL {
+        SELECT ?policy 
+               (COUNT(*) * 100.0 / ?totalDecisions AS ?goodPct)
+        WHERE {
+            ?context bg:activePolicy ?policy ;
+                     bg:outcomeQuality "good" .
+        }
+        GROUP BY ?policy
+    }
+}
+GROUP BY ?policy
+
+# ============================================================
+# QUERY 10: Complete Temporal Reconstruction
+# ============================================================
+# Purpose: Rebuild complete state at any point in time
+# Use case: "Show me EXACT state of Distributor at start of Week 7"
+
+PREFIX bg_distributor: <http://beergame.org/distributor#>
+
+SELECT ?inventory ?backlog ?demandRate ?coverage ?pendingShipments
+WHERE {
+    # Inventory state Week 7
+    ?invState a bg:Inventory ;
+              bg:belongsTo bg_distributor:Distributor ;
+              bg:forWeek bg:Week7 ;
+              bg:currentInventory ?inventory ;
+              bg:backlog ?backlog .
+    
+    # Metrics Week 7
+    ?metrics a bg:ActorMetrics ;
+             bg:belongsTo bg_distributor:Distributor ;
+             bg:forWeek bg:Week7 ;
+             bg:demandRate ?demandRate ;
+             bg:inventoryCoverage ?coverage .
+    
+    # In-transit shipments arriving Week 7
+    OPTIONAL {
+        SELECT (SUM(?qty) AS ?pendingShipments)
+        WHERE {
+            ?shipment a bg:Shipment ;
+                      bg:shippedTo bg_distributor:Distributor ;
+                      bg:arrivalWeek bg:Week7 ;
+                      bg:quantity ?qty .
+        }
+    }
+}

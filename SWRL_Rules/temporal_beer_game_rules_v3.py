@@ -1189,6 +1189,234 @@ class TemporalBeerGameRuleExecutor:
                 print(f"         ✗ Error creating shipment: {e}")
     
     
+    def create_decision_contexts(self, week_number):
+        """
+        V3.1 NEW: Create DecisionContext for each actor's order decision
+        Links context to inventory state, metrics, and the order itself
+        """
+        print(f"\n→ Creating DecisionContexts for Week {week_number}")
+        
+        actor_uris = {
+            "BG_Retailer": ("http://beergame.org/retailer#Retailer_Alpha", "bg_retailer"),
+            "BG_Wholesaler": ("http://beergame.org/wholesaler#Wholesaler_Beta", "bg_wholesaler"),
+            "BG_Distributor": ("http://beergame.org/distributor#Distributor_Gamma", "bg_distributor"),
+            "BG_Factory": ("http://beergame.org/factory#Factory_Delta", "bg_factory")
+        }
+    
+        for repo, (actor_uri, actor_ns) in actor_uris.items():
+            actor_name = actor_uri.split('#')[1]
+            
+            # Query to get order, inventory, and metrics for this week
+            query_context_data = f"""
+                PREFIX bg: <http://beergame.org/ontology#>
+                PREFIX {actor_ns}: <http://beergame.org/{actor_ns.replace('bg_', '')}#>
+                
+                SELECT ?order ?orderQty ?inv ?metrics ?currentInv ?backlog ?demandRate ?coverage ?suggestedQty
+                WHERE {{
+                    # Order created this week
+                    ?order a bg:Order ;
+                        bg:placedBy <{actor_uri}> ;
+                        bg:forWeek bg:Week_{week_number} ;
+                        bg:orderQuantity ?orderQty .
+                    
+                    # Inventory state this week
+                    ?inv a bg:Inventory ;
+                        bg:belongsTo <{actor_uri}> ;
+                        bg:forWeek bg:Week_{week_number} ;
+                        bg:currentInventory ?currentInv ;
+                        bg:backlog ?backlog .
+                    
+                    # Metrics this week
+                    ?metrics a bg:ActorMetrics ;
+                            bg:belongsTo <{actor_uri}> ;
+                            bg:forWeek bg:Week_{week_number} ;
+                            bg:demandRate ?demandRate ;
+                            bg:inventoryCoverage ?coverage ;
+                            bg:suggestedOrderQuantity ?suggestedQty .
+                }}
+                LIMIT 1
+            """
+            
+            try:
+                response = self.session.post(
+                    f"{self.base_url}/repositories/{repo}",
+                    data={'query': query_context_data},
+                    headers={'Accept': 'application/sparql-results+json'},
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    bindings = data.get('results', {}).get('bindings', [])
+                    
+                    if bindings:
+                        binding = bindings[0]
+                        order_uri = binding['order']['value']
+                        order_qty = float(binding['orderQty']['value'])
+                        inv_uri = binding['inv']['value']
+                        metrics_uri = binding['metrics']['value']
+                        current_inv = float(binding['currentInv']['value'])
+                        backlog = float(binding['backlog']['value'])
+                        demand_rate = float(binding['demandRate']['value'])
+                        coverage = float(binding['coverage']['value'])
+                        suggested_qty = float(binding['suggestedQty']['value'])
+                        
+                        # Generate decision rationale
+                        rationale = self._generate_rationale(
+                            actor_name, order_qty, suggested_qty,
+                            current_inv, backlog, demand_rate, coverage
+                        )
+                        
+                        # Infer policy and trend
+                        policy = self._infer_policy(order_qty, suggested_qty)
+                        trend = self._infer_trend(demand_rate, week_number, actor_uri, repo)
+                        risk = self._assess_risk(coverage, backlog)
+                        
+                        # Create DecisionContext
+                        context_uri = f"{actor_ns}:Context_Week{week_number}"
+                        
+                        insert_context = f"""
+                            PREFIX bg: <http://beergame.org/ontology#>
+                            PREFIX {actor_ns}: <http://beergame.org/{actor_ns.replace('bg_', '')}#>
+                            
+                            INSERT DATA {{
+                                {context_uri} a bg:DecisionContext ;
+                                    bg:belongsTo <{actor_uri}> ;
+                                    bg:forWeek bg:Week_{week_number} ;
+                                    bg:capturesInventoryState <{inv_uri}> ;
+                                    bg:capturesMetrics <{metrics_uri}> ;
+                                    bg:decisionRationale "{self._escape_sparql_string(rationale)}" ;
+                                    bg:activePolicy "{policy}" ;
+                                    bg:perceivedTrend "{trend}" ;
+                                    bg:riskAssessment "{risk}" .
+                                
+                                <{order_uri}> bg:basedOnContext {context_uri} .
+                            }}
+                        """
+                        
+                        # Execute insert
+                        insert_response = self.session.post(
+                            f"{self.base_url}/repositories/{repo}/statements",
+                            data={'update': insert_context},
+                            headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                            timeout=30
+                        )
+                        
+                        if insert_response.status_code == 204:
+                            print(f"      ✓ {actor_name}: {policy} policy, {trend} trend, {risk} risk")
+                            print(f"        Rationale: {rationale[:60]}...")
+                        else:
+                            print(f"      ✗ Failed {actor_name}: HTTP {insert_response.status_code}")
+                    else:
+                        print(f"      ⚠ No context data for {actor_name}")
+            
+            except Exception as e:
+                print(f"      ✗ Exception for {actor_name}: {e}")
+
+    def _generate_rationale(self, actor_name, order_qty, suggested_qty, inv, backlog, demand_rate, coverage):
+        """Generate human-readable decision rationale"""
+        diff = order_qty - suggested_qty
+        
+        if abs(diff) < 0.1:
+            base = f"Following suggested order of {order_qty:.0f} units"
+        elif diff > 0:
+            base = f"Ordering {order_qty:.0f} units ({diff:.0f} above suggestion)"
+        else:
+            base = f"Ordering {order_qty:.0f} units ({abs(diff):.0f} below suggestion)"
+        
+        context_parts = []
+        if backlog > 0:
+            context_parts.append(f"{backlog:.0f} backordered")
+        if coverage < 2:
+            context_parts.append(f"low coverage ({coverage:.1f}w)")
+        elif coverage > 4:
+            context_parts.append(f"high coverage ({coverage:.1f}w)")
+        if inv > demand_rate * 3:
+            context_parts.append(f"excess inventory")
+        elif inv < demand_rate:
+            context_parts.append(f"low inventory")
+        
+        context_parts.append(f"demand {demand_rate:.1f}/wk")
+        
+        return f"{base}. {', '.join(context_parts)}."
+
+    def _infer_policy(self, order_qty, suggested_qty):
+        """Infer ordering policy from actual vs suggested"""
+        diff_pct = (order_qty - suggested_qty) / max(suggested_qty, 1) * 100
+        
+        if abs(diff_pct) < 5:
+            return "balanced"
+        elif diff_pct > 20:
+            return "aggressive"
+        elif diff_pct < -20:
+            return "conservative"
+        else:
+            return "reactive"
+
+    def _infer_trend(self, demand_rate, week_number, actor_uri, repo):
+        """Infer trend from recent demand history"""
+        if week_number < 3:
+            return "unknown"
+        
+        query = f"""
+            PREFIX bg: <http://beergame.org/ontology#>
+            
+            SELECT ?week ?demandRate
+            WHERE {{
+                ?metrics a bg:ActorMetrics ;
+                        bg:belongsTo <{actor_uri}> ;
+                        bg:forWeek ?weekIRI ;
+                        bg:demandRate ?demandRate .
+                
+                ?weekIRI bg:weekNumber ?week .
+                FILTER(?week >= {week_number - 2} && ?week <= {week_number})
+            }}
+            ORDER BY ?week
+        """
+        
+        try:
+            response = self.session.post(
+                f"{self.base_url}/repositories/{repo}",
+                data={'query': query},
+                headers={'Accept': 'application/sparql-results+json'},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                bindings = data.get('results', {}).get('bindings', [])
+                
+                if len(bindings) >= 2:
+                    rates = [float(b['demandRate']['value']) for b in bindings]
+                    
+                    if rates[-1] > rates[0] * 1.2:
+                        return "increasing"
+                    elif rates[-1] < rates[0] * 0.8:
+                        return "decreasing"
+                    elif max(rates) - min(rates) > rates[0] * 0.3:
+                        return "volatile"
+                    else:
+                        return "stable"
+        except:
+            pass
+        
+        return "unknown"
+
+    def _assess_risk(self, coverage, backlog):
+        """Assess risk level based on coverage and backlog"""
+        if backlog > 5 or coverage < 1:
+            return "critical"
+        elif backlog > 0 or coverage < 2:
+            return "high"
+        elif coverage < 3:
+            return "medium"
+        else:
+            return "low"
+
+    @staticmethod
+    def _escape_sparql_string(s):
+        """Escape special characters for SPARQL"""
+        return s.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n')
     def query_observed_demand_federated(self, week_number, actor_uri, actor_repo):
         """
         V3: Query observed demand using BG_Supply_Chain federation
@@ -1407,6 +1635,9 @@ class TemporalBeerGameRuleExecutor:
         """
         Execute all rules for a specific week in dependency order
         
+        V3.1 CHANGES:
+        - Added DecisionContext creation after orders
+        
         V3 CHANGES:
         - UPDATE INVENTORY uses federated query for arriving shipments
         - No manual propagation needed (federation handles visibility)
@@ -1461,6 +1692,10 @@ class TemporalBeerGameRuleExecutor:
                     executed += 1
                 else:
                     failed += 1
+        
+        #  V3.1 NEW: Step 6.5: CREATE DECISION CONTEXTS
+        self.create_decision_contexts(week_number)
+        executed += len(repositories)
         
         # Step 7: V3 CREATE SHIPMENTS with federated order queries
         print(f"\n→ Executing: CREATE SHIPMENTS (V3 federated version)")

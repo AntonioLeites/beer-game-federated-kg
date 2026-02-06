@@ -382,3 +382,174 @@ bg:ActorShape a sh:NodeShape ;
         sh:maxCount 1 ;
         sh:message "budgetConstraint must be a non-negative decimal." ;
     ] .
+# ============================================================
+# DECISION CONTEXT SHAPE - Context traceability validation
+# ============================================================
+
+bg:DecisionContextShape a sh:NodeShape ;
+    sh:targetClass bg:DecisionContext ;
+    
+    # Must belong to exactly one Actor
+    sh:property [
+        sh:path bg:belongsTo ;
+        sh:class bg:Actor ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "DecisionContext must belong to exactly one Actor." ;
+    ] ;
+    
+    # Must be associated with exactly one Week
+    sh:property [
+        sh:path bg:forWeek ;
+        sh:class bg:Week ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "DecisionContext must be associated with exactly one Week." ;
+    ] ;
+    
+    # Must capture inventory state
+    sh:property [
+        sh:path bg:capturesInventoryState ;
+        sh:class bg:Inventory ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "DecisionContext must capture exactly one Inventory state." ;
+    ] ;
+    
+    # Must capture metrics
+    sh:property [
+        sh:path bg:capturesMetrics ;
+        sh:class bg:ActorMetrics ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "DecisionContext must capture exactly one ActorMetrics snapshot." ;
+    ] ;
+    
+    # Decision rationale validation
+    sh:property [
+        sh:path bg:decisionRationale ;
+        sh:datatype xsd:string ;
+        sh:maxCount 1 ;
+        sh:message "decisionRationale must be a string." ;
+    ] ;
+    
+    # Active policy validation
+    sh:property [
+        sh:path bg:activePolicy ;
+        sh:datatype xsd:string ;
+        sh:in ( "conservative" "aggressive" "reactive" "predictive" "balanced" ) ;
+        sh:maxCount 1 ;
+        sh:message "activePolicy must be one of: conservative, aggressive, reactive, predictive, balanced." ;
+    ] ;
+    
+    # Perceived trend validation
+    sh:property [
+        sh:path bg:perceivedTrend ;
+        sh:datatype xsd:string ;
+        sh:in ( "increasing" "stable" "decreasing" "volatile" "unknown" ) ;
+        sh:maxCount 1 ;
+        sh:message "perceivedTrend must be one of: increasing, stable, decreasing, volatile, unknown." ;
+    ] ;
+    
+    # Risk assessment validation
+    sh:property [
+        sh:path bg:riskAssessment ;
+        sh:datatype xsd:string ;
+        sh:in ( "low" "medium" "high" "critical" ) ;
+        sh:maxCount 1 ;
+        sh:message "riskAssessment must be one of: low, medium, high, critical." ;
+    ] ;
+    
+    # Outcome quality validation
+    sh:property [
+        sh:path bg:outcomeQuality ;
+        sh:datatype xsd:string ;
+        sh:in ( "optimal" "good" "suboptimal" "poor" "unknown" ) ;
+        sh:maxCount 1 ;
+        sh:message "outcomeQuality must be one of: optimal, good, suboptimal, poor, unknown." ;
+    ] ;
+    
+    # Boolean outcome flags
+    sh:property [
+        sh:path bg:causedBullwhip ;
+        sh:datatype xsd:boolean ;
+        sh:maxCount 1 ;
+    ] ;
+    
+    sh:property [
+        sh:path bg:causedStockout ;
+        sh:datatype xsd:boolean ;
+        sh:maxCount 1 ;
+    ] .
+
+# ============================================================
+# ORDER-CONTEXT LINKING VALIDATION
+# ============================================================
+
+bg:OrderContextLinkShape a sh:NodeShape ;
+    sh:targetClass bg:Order ;
+    
+    # Every order should ideally have a context (warning, not error)
+    sh:property [
+        sh:path bg:basedOnContext ;
+        sh:class bg:DecisionContext ;
+        sh:nodeKind sh:IRI ;
+        sh:maxCount 1 ;
+        sh:severity sh:Warning ;
+        sh:message "Order should have a DecisionContext for full traceability." ;
+    ] .
+
+# ============================================================
+# CONTEXT CONSISTENCY VALIDATION
+# ============================================================
+
+bg:ContextConsistencyShape a sh:NodeShape ;
+    sh:targetClass bg:DecisionContext ;
+    
+    # Context week must match captured entities' week
+    sh:sparql [
+        sh:message "DecisionContext week must match its captured Inventory week." ;
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT $this
+            WHERE {
+                $this bg:forWeek ?contextWeek ;
+                      bg:capturesInventoryState ?inv .
+                ?inv bg:forWeek ?invWeek .
+                FILTER (?contextWeek != ?invWeek)
+            }
+        """ ;
+    ] ;
+    
+    sh:sparql [
+        sh:message "DecisionContext week must match its captured Metrics week." ;
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT $this
+            WHERE {
+                $this bg:forWeek ?contextWeek ;
+                      bg:capturesMetrics ?metrics .
+                ?metrics bg:forWeek ?metricsWeek .
+                FILTER (?contextWeek != ?metricsWeek)
+            }
+        """ ;
+    ] ;
+    
+    # Context actor must match captured entities' actor
+    sh:sparql [
+        sh:message "DecisionContext actor must match its captured entities' actor." ;
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT $this
+            WHERE {
+                $this bg:belongsTo ?contextActor ;
+                      bg:capturesInventoryState ?inv .
+                ?inv bg:belongsTo ?invActor .
+                FILTER (?contextActor != ?invActor)
+            }
+        """ ;
+    ] .

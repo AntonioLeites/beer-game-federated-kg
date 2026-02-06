@@ -446,6 +446,13 @@ class BeerGameOrchestrator:
             
             if week < weeks:
                 time.sleep(1)
+        # V3.1 NEW: Post-mortem analysis
+        analyze_decision_outcomes(
+            self.session, 
+            weeks, 
+            self.supply_chain,
+            self.base_url
+        )
         
         self.generate_final_report()
     
@@ -609,6 +616,114 @@ def main():
     
     print("\n✅ Simulation complete!")
 
+
+def analyze_decision_outcomes(session, total_weeks, supply_chain, base_url):
+    """
+    V3.1: Post-mortem analysis - Update DecisionContext with actual outcomes
+    """
+    print(f"\n{'='*70}")
+    print(f"📊 POST-MORTEM ANALYSIS: Decision Outcomes")
+    print(f"{'='*70}\n")
+    
+    for actor_name, config in supply_chain.items():
+        repo = config['repo']
+        actor_uri = config['uri']
+        actor_ns = config['namespace']
+        
+        print(f"→ Analyzing {actor_name} decisions...")
+        
+        for week in range(2, total_weeks + 1):
+            context_uri = f"{actor_ns}:Context_Week{week}"
+            
+            outcome_query = f"""
+                PREFIX bg: <http://beergame.org/ontology#>
+                
+                SELECT ?orderQty ?demandRate ?nextBacklog
+                WHERE {{
+                    <{context_uri}> bg:capturesMetrics ?metrics .
+                    ?metrics bg:demandRate ?demandRate .
+                    
+                    ?order bg:basedOnContext <{context_uri}> ;
+                           bg:orderQuantity ?orderQty .
+                    
+                    OPTIONAL {{
+                        ?nextInv a bg:Inventory ;
+                                 bg:belongsTo <{actor_uri}> ;
+                                 bg:forWeek ?nextWeekIRI ;
+                                 bg:backlog ?nextBacklog .
+                        
+                        ?nextWeekIRI bg:weekNumber ?nextWeekNum .
+                        FILTER(?nextWeekNum = {week + 2})
+                    }}
+                }}
+            """
+            
+            try:
+                response = session.post(
+                    f"{base_url}/repositories/{repo}",
+                    data={'query': outcome_query},
+                    headers={'Accept': 'application/sparql-results+json'},
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    bindings = data.get('results', {}).get('bindings', [])
+                    
+                    if bindings:
+                        binding = bindings[0]
+                        order_qty = float(binding['orderQty']['value'])
+                        demand_rate = float(binding['demandRate']['value'])
+                        
+                        amplification = order_qty / max(demand_rate, 0.1)
+                        caused_bullwhip = amplification > 1.5
+                        
+                        caused_stockout = False
+                        actual_outcome = "Outcome unknown (insufficient data)"
+                        quality = "unknown"
+                        
+                        if 'nextBacklog' in binding:
+                            next_backlog = float(binding['nextBacklog']['value'])
+                            caused_stockout = next_backlog > 0
+                            
+                            if next_backlog > 0:
+                                actual_outcome = f"Led to stockout of {next_backlog:.0f} units"
+                                quality = "poor"
+                            elif amplification > 2.0:
+                                actual_outcome = f"Caused {amplification:.1f}x amplification"
+                                quality = "suboptimal"
+                            elif amplification < 0.8:
+                                actual_outcome = "Conservative order, stable inventory"
+                                quality = "good"
+                            else:
+                                actual_outcome = "Balanced order, maintained stability"
+                                quality = "optimal"
+                        
+                        update_query = f"""
+                            PREFIX bg: <http://beergame.org/ontology#>
+                            
+                            INSERT DATA {{
+                                <{context_uri}> bg:actualOutcome "{actual_outcome.replace('"', '\\"')}" ;
+                                                bg:outcomeQuality "{quality}" ;
+                                                bg:causedBullwhip {str(caused_bullwhip).lower()} ;
+                                                bg:causedStockout {str(caused_stockout).lower()} .
+                            }}
+                        """
+                        
+                        update_response = session.post(
+                            f"{base_url}/repositories/{repo}/statements",
+                            data={'update': update_query},
+                            headers={'Content-Type': 'application/x-www-form-urlencoded'},
+                            timeout=10
+                        )
+                        
+                        if update_response.status_code == 204:
+                            print(f"      Week {week}: {quality}")
+            
+            except Exception as e:
+                print(f"      ✗ Failed Week {week}: {e}")
+    
+    print("\n✓ Post-mortem analysis complete\n")
 
 if __name__ == "__main__":
     main()

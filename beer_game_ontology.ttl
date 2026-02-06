@@ -383,6 +383,128 @@ bg:defaultOrderDelay a owl:DatatypeProperty ;
     rdfs:domain bg:Actor ;
     rdfs:range xsd:integer ;
     owl:equivalentProperty [ rdf:value "1"^^xsd:integer ] .
+# ============================================================
+# CONTEXT KNOWLEDGE GRAPH EXTENSION
+# ============================================================
+
+# Context snapshot for decision traceability
+bg:ContextSnapshot a owl:Class ;
+    rdfs:subClassOf bg:TemporalEntity ;
+    rdfs:label "Context Snapshot" ;
+    rdfs:comment "Complete state snapshot at a specific decision point for audit trail" .
+
+bg:DecisionContext a owl:Class ;
+    rdfs:subClassOf bg:ContextSnapshot ;
+    rdfs:label "Decision Context" ;
+    rdfs:comment "Specific context captured when an order decision was made" .
+
+# Link decisions to their context
+bg:basedOnContext a owl:ObjectProperty ;
+    rdfs:domain bg:Order ;
+    rdfs:range bg:DecisionContext ;
+    rdfs:label "based on context" ;
+    rdfs:comment "Links an order decision to its complete decision context" .
+
+# Context snapshot relationships
+bg:capturesInventoryState a owl:ObjectProperty ;
+    rdfs:domain bg:DecisionContext ;
+    rdfs:range bg:Inventory ;
+    rdfs:label "captures inventory state" ;
+    rdfs:comment "References the inventory snapshot used in decision" .
+
+bg:capturesMetrics a owl:ObjectProperty ;
+    rdfs:domain bg:DecisionContext ;
+    rdfs:range bg:ActorMetrics ;
+    rdfs:label "captures metrics" ;
+    rdfs:comment "References the metrics snapshot used in decision" .
+
+bg:observedDemandHistory a owl:ObjectProperty ;
+    rdfs:domain bg:DecisionContext ;
+    rdfs:range rdf:List ;
+    rdfs:label "observed demand history" ;
+    rdfs:comment "Sequence of recent CustomerDemand instances observed" .
+
+bg:observedOrderHistory a owl:ObjectProperty ;
+    rdfs:domain bg:DecisionContext ;
+    rdfs:range rdf:List ;
+    rdfs:label "observed order history" ;
+    rdfs:comment "Sequence of recent orders placed by downstream customer" .
+
+# Context-specific properties for decision rationale
+bg:perceivedTrend a owl:DatatypeProperty ;
+    rdfs:domain bg:DecisionContext ;
+    rdfs:range xsd:string ;
+    rdfs:label "perceived trend" ;
+    rdfs:comment "Trend perceived by decision maker: increasing, stable, decreasing, volatile" .
+
+bg:riskAssessment a owl:DatatypeProperty ;
+    rdfs:domain bg:DecisionContext ;
+    rdfs:range xsd:string ;
+    rdfs:label "risk assessment" ;
+    rdfs:comment "Risk level: low, medium, high, critical" .
+
+bg:decisionRationale a owl:DatatypeProperty ;
+    rdfs:domain bg:DecisionContext ;
+    rdfs:range xsd:string ;
+    rdfs:label "decision rationale" ;
+    rdfs:comment "Human or AI-readable explanation of why this order quantity was chosen" .
+
+bg:activePolicy a owl:DatatypeProperty ;
+    rdfs:domain bg:DecisionContext ;
+    rdfs:range xsd:string ;
+    rdfs:label "active policy" ;
+    rdfs:comment "Ordering policy in effect: conservative, aggressive, reactive, predictive" .
+
+bg:constraintsActive a owl:DatatypeProperty ;
+    rdfs:domain bg:DecisionContext ;
+    rdfs:range xsd:string ;
+    rdfs:label "constraints active" ;
+    rdfs:comment "List of active constraints or guardrails applied" .
+
+# Comparative context (what-if scenarios)
+bg:alternativeContext a owl:ObjectProperty ;
+    rdfs:domain bg:DecisionContext ;
+    rdfs:range bg:DecisionContext ;
+    rdfs:label "alternative context" ;
+    rdfs:comment "Links to alternative decision contexts for counterfactual analysis" .
+
+bg:alternativeOrderQuantity a owl:DatatypeProperty ;
+    rdfs:domain bg:DecisionContext ;
+    rdfs:range xsd:integer ;
+    rdfs:label "alternative order quantity" ;
+    rdfs:comment "Alternative order quantity considered but not chosen" .
+
+bg:expectedOutcome a owl:DatatypeProperty ;
+    rdfs:domain bg:DecisionContext ;
+    rdfs:range xsd:string ;
+    rdfs:label "expected outcome" ;
+    rdfs:comment "Predicted outcome when decision was made" .
+
+# Post-decision outcome tracking
+bg:actualOutcome a owl:DatatypeProperty ;
+    rdfs:domain bg:DecisionContext ;
+    rdfs:range xsd:string ;
+    rdfs:label "actual outcome" ;
+    rdfs:comment "Observed outcome after decision was executed (filled retrospectively)" .
+
+bg:outcomeQuality a owl:DatatypeProperty ;
+    rdfs:domain bg:DecisionContext ;
+    rdfs:range xsd:string ;
+    rdfs:label "outcome quality" ;
+    rdfs:comment "Quality assessment: optimal, good, suboptimal, poor" .
+
+bg:causedBullwhip a owl:DatatypeProperty ;
+    rdfs:domain bg:DecisionContext ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "caused bullwhip" ;
+    rdfs:comment "True if this decision contributed to bullwhip amplification" .
+
+bg:causedStockout a owl:DatatypeProperty ;
+    rdfs:domain bg:DecisionContext ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "caused stockout" ;
+    rdfs:comment "True if this decision led to stockout in subsequent weeks" .
+
 
 # ============================================================
 # DOCUMENTATION
