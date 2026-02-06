@@ -38,3 +38,9 @@ Thumbs.db
 **/__pycache__/
 *.pyc
 
+
+# V4 simulation reports (work in progress)
+v4_simulation_report_*.json
+
+# Environment files
+.env
