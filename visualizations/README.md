@@ -28,11 +28,11 @@ Interactive visualization of Beer Game decision contexts.
 - D3.js v7 (loaded via CDN)
 - Direct SPARQL queries to GraphDB
 
-## CORS Setup
 
 GraphDB blocks browser requests by default (CORS policy). Two solutions:
 
 ### Option 1: Enable CORS in GraphDB (recommended for production)
+
 Edit `graphdb.properties`:
 ```
 graphdb.workbench.cors.enable = true
@@ -41,6 +41,7 @@ graphdb.workbench.cors.origin = *
 Then restart GraphDB.
 
 ### Option 2: Use CORS Proxy (quick setup)
+
 ```bash
 # Terminal 1: Start CORS proxy
 cd visualizations
@@ -54,3 +55,59 @@ open http://localhost:8000/decision_timeline.html
 ```
 
 The proxy forwards requests from browser → GraphDB with proper CORS headers.
+
+## CORS Setup
+
+GraphDB blocks browser requests by default (CORS policy). Two solutions:
+
+### Option 1: Enable CORS in GraphDB (recommended for production)
+
+Edit `graphdb.properties`:
+```properties
+graphdb.workbench.cors.enable = true
+graphdb.workbench.cors.origin = *
+```
+
+Then restart GraphDB.
+
+Location of `graphdb.properties`:
+
+- macOS: `~/Library/Application Support/GraphDB/conf/graphdb.properties`
+- Linux: `~/.graphdb/conf/graphdb.properties`
+- Windows: `%APPDATA%\GraphDB\conf\graphdb.properties`
+
+### Option 2: Use CORS Proxy (quick setup - used by default)
+
+```bash
+# Terminal 1: Start CORS proxy
+cd visualizations
+python proxy.py
+
+# Terminal 2: Start web server  
+cd visualizations
+python -m http.server 8000
+
+# Open browser
+open http://localhost:8000/decision_timeline.html
+```
+
+The proxy runs on port 8001 and forwards requests to GraphDB on port 7200 with proper CORS headers.
+
+**Note:** `config.js` is configured to use the proxy (`http://localhost:8001`) by default.
+
+## Screenshots
+
+Dashboard shows:
+
+- **Stats:** Total decisions, avg amplification, bullwhip events, weeks simulated
+- **Timeline:** Interactive visualization with color-coded risk levels
+- **Details:** Click any decision point to see complete context
+
+Risk levels are color-coded:
+
+- 🟢 Low (green)
+- 🟡 Medium (yellow)  
+- 🟠 High (orange)
+- 🔴 Critical (red)
+
+Circle size indicates amplification factor (larger = higher amplification).

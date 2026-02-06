@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beer Game - Decision Timeline Explorer</title>
+    
+    <!-- D3.js -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/timeline.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <h1>🍺 Beer Game - Decision Timeline Explorer</h1>
+            <p>Interactive visualization of supply chain decision contexts with V3.1 Context Knowledge Graph</p>
+        </header>
+        
+        <!-- Stats Dashboard -->
+        <div class="controls">
+            <div class="stats-grid">
+                <!-- Stats will be populated by JavaScript -->
+                <div class="stat-card">
+                    <h3>Loading...</h3>
+                    <div class="value">-</div>
+                </div>
+            </div>
+            
+            <!-- Legend -->
+            <div class="legend">
+                <!-- Legend will be populated by JavaScript -->
+            </div>
+        </div>
+        
+        <!-- Timeline Visualization -->
+        <div id="timeline-container">
+            <div class="loading">Initializing dashboard</div>
+        </div>
+        
+        <!-- Context Detail Panel -->
+        <div id="detail-panel" class="hidden">
+            <div class="context-card">
+                <p style="text-align: center; color: #999;">Click a decision point to see details</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Configuration -->
+    <script src="js/config.js"></script>
+    
+    <!-- SPARQL Queries -->
+    <script src="js/queries.js"></script>
+    
+    <!-- Timeline Visualization -->
+    <script src="js/timeline.js"></script>
+</body>
+</html>
