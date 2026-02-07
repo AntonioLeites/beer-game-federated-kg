@@ -6,6 +6,7 @@ class DecisionTimeline {
         this.svg = null;
         this.data = null;
         this.selectedContext = null;
+        this.tooltip = null;
     }
     
     async init() {
@@ -21,6 +22,9 @@ class DecisionTimeline {
                 return;
             }
             
+            // Create tooltip
+            this.createTooltip();
+            
             // Render
             this.render();
             this.updateStats();
@@ -29,6 +33,109 @@ class DecisionTimeline {
             console.error('Initialization failed:', error);
             this.showError(`Failed to load data: ${error.message}`);
         }
+    }
+    
+    createTooltip() {
+        // Remove existing tooltip if any
+        d3.select('#tooltip').remove();
+        
+        // Create tooltip div
+        this.tooltip = d3.select('body')
+            .append('div')
+            .attr('id', 'tooltip')
+            .style('position', 'absolute')
+            .style('visibility', 'hidden')
+            .style('background', 'rgba(0, 0, 0, 0.9)')
+            .style('color', 'white')
+            .style('padding', '12px 16px')
+            .style('border-radius', '6px')
+            .style('font-size', '13px')
+            .style('line-height', '1.6')
+            .style('box-shadow', '0 4px 12px rgba(0,0,0,0.3)')
+            .style('pointer-events', 'none')
+            .style('z-index', '1000')
+            .style('max-width', '300px');
+    }
+    
+    showTooltip(event, d) {
+        const amplification = (d.orderQty / d.demandRate).toFixed(2);
+        const riskEmoji = {
+            'low': '🟢',
+            'medium': '🟡',
+            'high': '🟠',
+            'critical': '🔴'
+        }[d.risk] || '⚪';
+        
+        const qualityEmoji = {
+            'optimal': '✓',
+            'good': '~',
+            'suboptimal': '⚠',
+            'poor': '✗',
+            'unknown': '?'
+        }[d.quality] || '';
+        
+        const html = `
+            <div style="font-weight: 600; margin-bottom: 8px; font-size: 14px;">
+                Week ${d.week} - ${d.actorName}
+            </div>
+            <div style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 8px;">
+                <div style="margin-bottom: 4px;">
+                    <span style="opacity: 0.8;">Order:</span> 
+                    <strong>${d.orderQty} units</strong>
+                </div>
+                <div style="margin-bottom: 4px;">
+                    <span style="opacity: 0.8;">Risk:</span> 
+                    <strong>${riskEmoji} ${d.risk.toUpperCase()}</strong>
+                </div>
+                <div style="margin-bottom: 4px;">
+                    <span style="opacity: 0.8;">Amplification:</span> 
+                    <strong>${amplification}x</strong>
+                </div>
+                ${d.quality ? `
+                <div style="margin-bottom: 4px;">
+                    <span style="opacity: 0.8;">Outcome:</span> 
+                    <strong>${qualityEmoji} ${d.quality}</strong>
+                </div>
+                ` : ''}
+            </div>
+            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 11px; opacity: 0.7;">
+                Click for full details
+            </div>
+        `;
+        
+        this.tooltip
+            .html(html)
+            .style('visibility', 'visible');
+        
+        this.updateTooltipPosition(event);
+    }
+    
+    updateTooltipPosition(event) {
+        const tooltipNode = this.tooltip.node();
+        const tooltipWidth = tooltipNode.offsetWidth;
+        const tooltipHeight = tooltipNode.offsetHeight;
+        
+        let left = event.pageX + 15;
+        let top = event.pageY - tooltipHeight / 2;
+        
+        // Keep tooltip within viewport
+        if (left + tooltipWidth > window.innerWidth) {
+            left = event.pageX - tooltipWidth - 15;
+        }
+        
+        if (top < 10) {
+            top = 10;
+        } else if (top + tooltipHeight > window.innerHeight) {
+            top = window.innerHeight - tooltipHeight - 10;
+        }
+        
+        this.tooltip
+            .style('left', `${left}px`)
+            .style('top', `${top}px`);
+    }
+    
+    hideTooltip() {
+        this.tooltip.style('visibility', 'hidden');
     }
     
     showLoading() {
@@ -105,6 +212,7 @@ class DecisionTimeline {
             .call(yAxis);
         
         // Decision points
+        const self = this;
         const points = g.selectAll('.decision-point')
             .data(this.data)
             .enter()
@@ -116,11 +224,21 @@ class DecisionTimeline {
             .attr('fill', d => CONFIG.colors.risk[d.risk] || '#999')
             .attr('opacity', 0.8)
             .on('click', (event, d) => this.showContextDetail(d))
-            .on('mouseenter', function() {
-                d3.select(this).attr('opacity', 1);
+            .on('mouseenter', function(event, d) {
+                d3.select(this)
+                    .attr('opacity', 1)
+                    .attr('stroke', '#333')
+                    .attr('stroke-width', 2);
+                self.showTooltip(event, d);
+            })
+            .on('mousemove', (event) => {
+                self.updateTooltipPosition(event);
             })
             .on('mouseleave', function() {
-                d3.select(this).attr('opacity', 0.8);
+                d3.select(this)
+                    .attr('opacity', 0.8)
+                    .attr('stroke', 'none');
+                self.hideTooltip();
             });
         
         // Quality indicators (small dots)
