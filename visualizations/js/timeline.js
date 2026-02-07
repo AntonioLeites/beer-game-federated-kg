@@ -29,6 +29,9 @@ class DecisionTimeline {
             this.render();
             this.updateStats();
             
+            // Setup export button
+            this.setupExport();
+            
         } catch (error) {
             console.error('Initialization failed:', error);
             this.showError(`Failed to load data: ${error.message}`);
@@ -136,6 +139,95 @@ class DecisionTimeline {
     
     hideTooltip() {
         this.tooltip.style('visibility', 'hidden');
+    }
+    
+    setupExport() {
+        const exportBtn = document.getElementById('export-btn');
+        if (!exportBtn) return;
+        
+        exportBtn.addEventListener('click', () => this.exportToPNG());
+    }
+    
+    async exportToPNG() {
+        const exportBtn = document.getElementById('export-btn');
+        exportBtn.disabled = true;
+        exportBtn.textContent = '⏳ Exporting...';
+        
+        try {
+            // Get SVG element
+            const svgElement = this.svg.node();
+            const bbox = svgElement.getBBox();
+            
+            // Create canvas
+            const canvas = document.createElement('canvas');
+            const scale = 2; // Higher resolution
+            canvas.width = (bbox.width + CONFIG.visualization.margin.left + CONFIG.visualization.margin.right) * scale;
+            canvas.height = (bbox.height + CONFIG.visualization.margin.top + CONFIG.visualization.margin.bottom) * scale;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.scale(scale, scale);
+            
+            // White background
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Convert SVG to data URL
+            const svgData = new XMLSerializer().serializeToString(svgElement);
+            const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+            const svgUrl = URL.createObjectURL(svgBlob);
+            
+            // Load and draw image
+            const img = new Image();
+            img.onload = () => {
+                ctx.drawImage(img, 0, 0);
+                URL.revokeObjectURL(svgUrl);
+                
+                // Download
+                canvas.toBlob((blob) => {
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+                    link.download = `beer-game-timeline-${timestamp}.png`;
+                    link.href = url;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                    
+                    // Show notification
+                    this.showNotification('✓ Timeline exported successfully!');
+                    
+                    // Reset button
+                    exportBtn.disabled = false;
+                    exportBtn.textContent = '📥 Export PNG';
+                });
+            };
+            
+            img.onerror = () => {
+                throw new Error('Failed to load SVG image');
+            };
+            
+            img.src = svgUrl;
+            
+        } catch (error) {
+            console.error('Export failed:', error);
+            this.showNotification('✗ Export failed: ' + error.message, true);
+            exportBtn.disabled = false;
+            exportBtn.textContent = '📥 Export PNG';
+        }
+    }
+    
+    showNotification(message, isError = false) {
+        const notification = document.createElement('div');
+        notification.className = 'export-notification';
+        notification.textContent = message;
+        if (isError) {
+            notification.style.background = '#F44336';
+        }
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.classList.add('fade-out');
+            setTimeout(() => notification.remove(), 300);
+        }, 2500);
     }
     
     showLoading() {
