@@ -2,6 +2,8 @@
 
 Interactive visualization of Beer Game decision contexts using V3.1 Context Knowledge Graph.
 
+![Dashboard Overview](images/dashboard_overview.png)
+
 ## Requirements
 
 - GraphDB running on `http://localhost:7200`
@@ -37,6 +39,33 @@ open http://localhost:8000/decision_timeline.html
 - **Multi-actor View:** See all supply chain actors on one timeline
 - **Outcome Tracking:** Quality badges, bullwhip indicators, stockout flags
 
+### Context Detail Panel
+
+Click any decision point to see complete context:
+
+![Context Detail](images/context_detail.png)
+
+## Dashboard Overview
+
+### Stats Cards
+- **Total Decisions:** Count across all actors
+- **Avg Amplification:** Mean order/demand ratio
+- **Bullwhip Events:** Decisions with amplification > 1.5x
+- **Weeks Simulated:** Timeline span
+
+### Timeline Visualization
+- **X-axis:** Week numbers
+- **Y-axis:** Supply chain actors (Retailer, Wholesaler, Distributor, Factory)
+- **Circle color:** Risk level at decision time
+- **Circle size:** Amplification factor (larger = more amplification)
+- **Small dots:** Outcome quality indicator
+
+### Context Detail Panel (Click to View)
+- **Decision:** Order quantity, policy, amplification
+- **State:** Inventory, backlog, coverage
+- **Assessment:** Risk level, perceived trend, demand rate
+- **Outcome:** Quality badge, bullwhip/stockout indicators, result description
+
 ## CORS Configuration
 
 GraphDB blocks browser requests by default (CORS policy). Two solutions:
@@ -71,27 +100,6 @@ graphdb: {
 }
 ```
 
-## Dashboard Overview
-
-### Stats Cards
-- **Total Decisions:** Count across all actors
-- **Avg Amplification:** Mean order/demand ratio
-- **Bullwhip Events:** Decisions with amplification > 1.5x
-- **Weeks Simulated:** Timeline span
-
-### Timeline Visualization
-- **X-axis:** Week numbers
-- **Y-axis:** Supply chain actors (Retailer, Wholesaler, Distributor, Factory)
-- **Circle color:** Risk level at decision time
-- **Circle size:** Amplification factor (larger = more amplification)
-- **Small dots:** Outcome quality indicator
-
-### Context Detail Panel (Click to View)
-- **Decision:** Order quantity, policy, amplification
-- **State:** Inventory, backlog, coverage
-- **Assessment:** Risk level, perceived trend, demand rate
-- **Outcome:** Quality badge, bullwhip/stockout indicators, result description
-
 ## Technical Stack
 
 - **Frontend:** HTML5, CSS3, Vanilla JavaScript
@@ -108,6 +116,7 @@ graphdb: {
 - `js/config.js` - GraphDB connection and color schemes
 - `js/queries.js` - SPARQL query functions
 - `js/timeline.js` - D3.js visualization logic
+- `images/` - Screenshots for documentation
 
 ## Troubleshooting
 

@@ -647,6 +647,7 @@ After simulation completes, outcomes are analyzed:
 ### Query Examples
 
 #### 1. Decision Audit Trail
+
 ```sparql
 # Why did Retailer order 20 units in Week 3?
 PREFIX bg: <http://beergame.org/ontology#>
@@ -679,6 +680,7 @@ WHERE {
 | 20 | Following suggested order of 20 units. low coverage (0.0w), demand 6.4/wk. | balanced | increasing | critical | 0 | 0.0 |
 
 #### 2. Bullwhip Root Cause
+
 ```sparql
 # Which decisions caused bullwhip effect?
 PREFIX bg: <http://beergame.org/ontology#>
@@ -724,6 +726,7 @@ ORDER BY DESC(?optimal)
 ```
 
 ### Files Added in V3.1
+
 ```
 beer-game-federated-kg/
 ├── beer_game_ontology.ttl              (modified - added Context classes)
@@ -829,6 +832,41 @@ python advanced_simulation_v3.py
 ```
 
 **No code changes needed** - context creation is automatic when orders are placed.
+
+---
+
+## 📊 Interactive Visualization Dashboard
+
+V3.1 includes an interactive web dashboard for exploring decision contexts.
+
+![Decision Timeline Dashboard](visualizations/images/dashboard_overview.png)
+
+### Features
+
+- **Interactive Timeline:** D3.js visualization of all decisions
+- **Real-time Queries:** Direct SPARQL queries to GraphDB
+- **Context Explorer:** Click decision points to see full details
+- **Multi-actor View:** See propagation across supply chain
+- **Risk & Outcome Tracking:** Color-coded visualization
+
+### Quick Start
+
+```bash
+# 1. Start CORS proxy
+cd visualizations
+python proxy.py
+
+# 2. Start web server (new terminal)
+python -m http.server 8000
+
+# 3. Open dashboard
+open http://localhost:8000/decision_timeline.html
+```
+
+### Documentation
+
+See [visualizations/README.md](visualizations/README.md) for complete documentation.
+
 
 ---
 
