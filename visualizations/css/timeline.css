@@ -20,6 +20,7 @@ body {
 }
 
 header {
+    position: relative; /* NEW - to position the button relative to the header */
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     padding: 30px;
