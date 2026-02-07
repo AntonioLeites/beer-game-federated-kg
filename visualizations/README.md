@@ -1,6 +1,6 @@
 # Decision Timeline Dashboard
 
-Interactive visualization of Beer Game decision contexts.
+Interactive visualization of Beer Game decision contexts using V3.1 Context Knowledge Graph.
 
 ## Requirements
 
@@ -8,106 +8,140 @@ Interactive visualization of Beer Game decision contexts.
 - BG_Supply_Chain federated repository
 - At least one simulation executed (contexts exist)
 
-## Usage
+## Quick Start
 
-1. Open `decision_timeline.html` in browser
-2. Dashboard queries GraphDB automatically
-3. Click decision points to see context details
-
-## Features
-
-- Timeline view of all decisions
-- Risk levels color-coded
-- Outcome quality indicators
-- Context detail panel on click
-- Multi-actor view with propagation
-
-## Technical Stack
-
-- Pure JavaScript (no build tools)
-- D3.js v7 (loaded via CDN)
-- Direct SPARQL queries to GraphDB
-
-
-GraphDB blocks browser requests by default (CORS policy). Two solutions:
-
-### Option 1: Enable CORS in GraphDB (recommended for production)
-
-Edit `graphdb.properties`:
-```
-graphdb.workbench.cors.enable = true
-graphdb.workbench.cors.origin = *
-```
-Then restart GraphDB.
-
-### Option 2: Use CORS Proxy (quick setup)
-
+### 1. Start CORS Proxy
 ```bash
-# Terminal 1: Start CORS proxy
 cd visualizations
 python proxy.py
+```
 
-# Terminal 2: Start web server
+### 2. Start Web Server (in another terminal)
+```bash
+cd visualizations
 python -m http.server 8000
+```
 
-# Open browser
+### 3. Open Dashboard
+```bash
 open http://localhost:8000/decision_timeline.html
 ```
 
-The proxy forwards requests from browser → GraphDB with proper CORS headers.
+## Features
 
-## CORS Setup
+- **Interactive Timeline:** Click decision points to explore contexts
+- **Stats Dashboard:** Total decisions, avg amplification, bullwhip events
+- **Color-coded Risk:** Low (🟢) → Medium (🟡) → High (🟠) → Critical (🔴)
+- **Size-coded Amplification:** Larger circles = higher order/demand ratio
+- **Context Details:** Full decision state, assessment, and outcome
+- **Multi-actor View:** See all supply chain actors on one timeline
+- **Outcome Tracking:** Quality badges, bullwhip indicators, stockout flags
+
+## CORS Configuration
 
 GraphDB blocks browser requests by default (CORS policy). Two solutions:
 
-### Option 1: Enable CORS in GraphDB (recommended for production)
+### Option 1: Use CORS Proxy (Default - Easy Setup)
 
-Edit `graphdb.properties`:
+The included `proxy.py` forwards browser requests to GraphDB with proper CORS headers.
+```bash
+python proxy.py  # Runs on :8001, forwards to GraphDB :7200
+```
+
+**Note:** `config.js` is pre-configured to use the proxy at `http://localhost:8001`.
+
+### Option 2: Enable CORS in GraphDB (Production)
+
+Edit `graphdb.properties` and restart GraphDB:
 ```properties
 graphdb.workbench.cors.enable = true
 graphdb.workbench.cors.origin = *
 ```
 
-Then restart GraphDB.
-
-Location of `graphdb.properties`:
-
+**Location of `graphdb.properties`:**
 - macOS: `~/Library/Application Support/GraphDB/conf/graphdb.properties`
 - Linux: `~/.graphdb/conf/graphdb.properties`
 - Windows: `%APPDATA%\GraphDB\conf\graphdb.properties`
 
-### Option 2: Use CORS Proxy (quick setup - used by default)
-
-```bash
-# Terminal 1: Start CORS proxy
-cd visualizations
-python proxy.py
-
-# Terminal 2: Start web server  
-cd visualizations
-python -m http.server 8000
-
-# Open browser
-open http://localhost:8000/decision_timeline.html
+If using this option, update `config.js`:
+```javascript
+graphdb: {
+    url: 'http://localhost:7200',  // Direct to GraphDB
+    repository: 'BG_Supply_Chain'
+}
 ```
 
-The proxy runs on port 8001 and forwards requests to GraphDB on port 7200 with proper CORS headers.
+## Dashboard Overview
 
-**Note:** `config.js` is configured to use the proxy (`http://localhost:8001`) by default.
+### Stats Cards
+- **Total Decisions:** Count across all actors
+- **Avg Amplification:** Mean order/demand ratio
+- **Bullwhip Events:** Decisions with amplification > 1.5x
+- **Weeks Simulated:** Timeline span
 
-## Screenshots
+### Timeline Visualization
+- **X-axis:** Week numbers
+- **Y-axis:** Supply chain actors (Retailer, Wholesaler, Distributor, Factory)
+- **Circle color:** Risk level at decision time
+- **Circle size:** Amplification factor (larger = more amplification)
+- **Small dots:** Outcome quality indicator
 
-Dashboard shows:
+### Context Detail Panel (Click to View)
+- **Decision:** Order quantity, policy, amplification
+- **State:** Inventory, backlog, coverage
+- **Assessment:** Risk level, perceived trend, demand rate
+- **Outcome:** Quality badge, bullwhip/stockout indicators, result description
 
-- **Stats:** Total decisions, avg amplification, bullwhip events, weeks simulated
-- **Timeline:** Interactive visualization with color-coded risk levels
-- **Details:** Click any decision point to see complete context
+## Technical Stack
 
-Risk levels are color-coded:
+- **Frontend:** HTML5, CSS3, Vanilla JavaScript
+- **Visualization:** D3.js v7 (loaded via CDN)
+- **Data Source:** Direct SPARQL queries to GraphDB
+- **CORS Proxy:** Python 3 http.server
+- **No build tools required** - runs in any modern browser
 
-- 🟢 Low (green)
-- 🟡 Medium (yellow)  
-- 🟠 High (orange)
-- 🔴 Critical (red)
+## Files
 
-Circle size indicates amplification factor (larger = higher amplification).
+- `decision_timeline.html` - Main dashboard (self-contained)
+- `proxy.py` - CORS proxy server
+- `css/timeline.css` - Styling and layout
+- `js/config.js` - GraphDB connection and color schemes
+- `js/queries.js` - SPARQL query functions
+- `js/timeline.js` - D3.js visualization logic
+
+## Troubleshooting
+
+### No data showing
+1. Ensure GraphDB is running: `curl http://localhost:7200/repositories`
+2. Run a simulation to create contexts: `cd SWRL_Rules && python advanced_simulation_v3.py`
+3. Check browser console (F12) for errors
+
+### CORS errors
+1. Ensure proxy is running on port 8001
+2. Verify `config.js` points to `http://localhost:8001`
+3. Check proxy terminal for error messages
+
+### "Failed to fetch" errors
+1. Verify GraphDB is accessible: `curl http://localhost:7200/repositories`
+2. Ensure BG_Supply_Chain repository exists
+3. Check that contexts were created (see query results in GraphDB Workbench)
+
+## Example Queries
+
+The dashboard uses these SPARQL queries (see `js/queries.js`):
+
+- `fetchContexts()` - All decision contexts with full details
+- `fetchActorStats()` - Aggregated statistics per actor
+
+You can run these manually in GraphDB Workbench for debugging.
+
+## Development
+
+To modify the dashboard:
+
+1. Edit files in `visualizations/`
+2. Refresh browser (no build step needed)
+3. Check browser console for JavaScript errors
+4. Use GraphDB Workbench to test SPARQL queries
+
+Color schemes and visual settings are in `js/config.js`.
