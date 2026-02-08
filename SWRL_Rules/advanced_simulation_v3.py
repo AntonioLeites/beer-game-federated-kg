@@ -139,6 +139,8 @@ class BeerGameOrchestrator:
             demand = 4
         elif demand_pattern == "spike":
             demand = 12 if week == 3 else 4
+        elif demand_pattern == "oscillating":
+            demand = 8 if week % 2 == 0 else 4
         elif demand_pattern == "increasing":
             demand = 4 + (week - 1)
         elif demand_pattern == "random":
@@ -596,16 +598,19 @@ def main():
     print("Choose demand pattern:")
     print("  1. Stable (constant 4 units)")
     print("  2. Spike (12 units at week 3)")
-    print("  3. Increasing (gradual growth)")
-    print("  4. Random (2-8 units)")
+    print("  3. Oscillating (4 units, 8 units alternating)")
+    print("  4. Increasing (gradual growth)")
+    print("  5. Random (2-8 units)")
+
     
     choice = input("\nEnter choice (1-4, default=1): ").strip() or "1"
     
     patterns = {
         "1": "stable",
         "2": "spike",
-        "3": "increasing",
-        "4": "random"
+        "3": "oscillating",
+        "4": "increasing",
+        "5": "random"
     }
     pattern = patterns.get(choice, "stable")
     

@@ -7,6 +7,14 @@ class DecisionTimeline {
         this.data = null;
         this.selectedContext = null;
         this.tooltip = null;
+        this.showArrows = true;
+        this.links = [];
+
+        // Animation properties
+        this.isPlaying = false;
+        this.currentWeek = 0;
+        this.animationSpeed = 1000; // ms por week
+        this.animationTimer = null;
     }
     
     async init() {
@@ -31,6 +39,12 @@ class DecisionTimeline {
             
             // Setup export button
             this.setupExport();
+            
+            // Setup arrows toggle
+            this.setupArrowsToggle();
+
+            // Setup animation controls
+            this.setupAnimationControls();
             
         } catch (error) {
             console.error('Initialization failed:', error);
@@ -77,6 +91,29 @@ class DecisionTimeline {
             'unknown': '?'
         }[d.quality] || '';
         
+        // Find connected links
+        const outgoingLink = this.links.find(link => link.source === d);
+        const incomingLink = this.links.find(link => link.target === d);
+        
+        let connectionInfo = '';
+        if (outgoingLink) {
+            connectionInfo += `
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 12px;">
+                    <div style="opacity: 0.8;">➤ This order arrives at:</div>
+                    <strong>${outgoingLink.target.actorName} (Week ${outgoingLink.target.week})</strong>
+                </div>
+            `;
+        }
+        if (incomingLink) {
+            connectionInfo += `
+                <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 12px;">
+                    <div style="opacity: 0.8;">◀ Incoming order from:</div>
+                    <strong>${incomingLink.source.actorName} (Week ${incomingLink.source.week})</strong>
+                    <div style="opacity: 0.8; font-size: 11px;">${incomingLink.quantity} units</div>
+                </div>
+            `;
+        }
+        
         const html = `
             <div style="font-weight: 600; margin-bottom: 8px; font-size: 14px;">
                 Week ${d.week} - ${d.actorName}
@@ -101,6 +138,7 @@ class DecisionTimeline {
                 </div>
                 ` : ''}
             </div>
+            ${connectionInfo}
             <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 11px; opacity: 0.7;">
                 Click for full details
             </div>
@@ -141,11 +179,89 @@ class DecisionTimeline {
         this.tooltip.style('visibility', 'hidden');
     }
     
+    highlightConnections(d) {
+        // Find connected links
+        const connectedLinks = this.links.filter(link => 
+            link.source === d || link.target === d
+        );
+        
+        // Fade out all arrows
+        this.svg.selectAll('.propagation-arrow')
+            .transition()
+            .duration(200)
+            .attr('stroke-opacity', 0.1);
+        
+        // Highlight connected arrows
+        this.svg.selectAll('.propagation-arrow')
+            .filter(link => connectedLinks.includes(link))
+            .transition()
+            .duration(200)
+            .attr('stroke-opacity', 0.9)
+            .attr('stroke-width', link => {
+                const strokeScale = d3.scaleLinear()
+                    .domain([0, d3.max(this.data, d => d.orderQty)])
+                    .range([2, 10]); // Más gruesas al highlight
+                return strokeScale(link.quantity);
+            });
+        
+        // Fade out other decision points
+        this.svg.selectAll('.decision-point')
+            .filter(point => point !== d && 
+                   !connectedLinks.some(link => link.source === point || link.target === point))
+            .transition()
+            .duration(200)
+            .attr('opacity', 0.2);
+        
+        // Highlight connected decision points
+        this.svg.selectAll('.decision-point')
+            .filter(point => point === d || 
+                   connectedLinks.some(link => link.source === point || link.target === point))
+            .transition()
+            .duration(200)
+            .attr('opacity', 1);
+    }
+    
+    resetHighlight() {
+        // Restore all arrows
+        this.svg.selectAll('.propagation-arrow')
+            .transition()
+            .duration(200)
+            .attr('stroke-opacity', 0.4)
+            .attr('stroke-width', link => {
+                const strokeScale = d3.scaleLinear()
+                    .domain([0, d3.max(this.data, d => d.orderQty)])
+                    .range([1, 8]);
+                return strokeScale(link.quantity);
+            });
+        
+        // Restore all decision points
+        this.svg.selectAll('.decision-point')
+            .transition()
+            .duration(200)
+            .attr('opacity', 0.8);
+    }
+    
     setupExport() {
         const exportBtn = document.getElementById('export-btn');
         if (!exportBtn) return;
         
         exportBtn.addEventListener('click', () => this.exportToPNG());
+    }
+    
+    setupArrowsToggle() {
+        const toggleBtn = document.getElementById('arrows-toggle');
+        if (!toggleBtn) return;
+        
+        toggleBtn.addEventListener('click', () => {
+            this.showArrows = !this.showArrows;
+            toggleBtn.textContent = this.showArrows ? '🔗 Hide Arrows' : '🔗 Show Arrows';
+            this.toggleArrows();
+        });
+    }
+    
+    toggleArrows() {
+        const arrows = this.svg.selectAll('.propagation-arrow');
+        arrows.style('display', this.showArrows ? 'block' : 'none');
     }
     
     async exportToPNG() {
@@ -154,35 +270,29 @@ class DecisionTimeline {
         exportBtn.textContent = '⏳ Exporting...';
         
         try {
-            // Get SVG element
             const svgElement = this.svg.node();
             const bbox = svgElement.getBBox();
             
-            // Create canvas
             const canvas = document.createElement('canvas');
-            const scale = 2; // Higher resolution
+            const scale = 2;
             canvas.width = (bbox.width + CONFIG.visualization.margin.left + CONFIG.visualization.margin.right) * scale;
             canvas.height = (bbox.height + CONFIG.visualization.margin.top + CONFIG.visualization.margin.bottom) * scale;
             
             const ctx = canvas.getContext('2d');
             ctx.scale(scale, scale);
             
-            // White background
             ctx.fillStyle = 'white';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
-            // Convert SVG to data URL
             const svgData = new XMLSerializer().serializeToString(svgElement);
             const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
             const svgUrl = URL.createObjectURL(svgBlob);
             
-            // Load and draw image
             const img = new Image();
             img.onload = () => {
                 ctx.drawImage(img, 0, 0);
                 URL.revokeObjectURL(svgUrl);
                 
-                // Download
                 canvas.toBlob((blob) => {
                     const url = URL.createObjectURL(blob);
                     const link = document.createElement('a');
@@ -192,10 +302,8 @@ class DecisionTimeline {
                     link.click();
                     URL.revokeObjectURL(url);
                     
-                    // Show notification
                     this.showNotification('✓ Timeline exported successfully!');
                     
-                    // Reset button
                     exportBtn.disabled = false;
                     exportBtn.textContent = '📥 Export PNG';
                 });
@@ -238,6 +346,177 @@ class DecisionTimeline {
         this.container.html(`<div class="error">${message}</div>`);
     }
     
+    computePropagationLinks() {
+        // Mapeo usando URIs reales
+        const actorHierarchy = {
+            'http://beergame.org/retailer#Retailer_Alpha': 'http://beergame.org/wholesaler#Wholesaler_Beta',
+            'http://beergame.org/wholesaler#Wholesaler_Beta': 'http://beergame.org/distributor#Distributor_Gamma',
+            'http://beergame.org/distributor#Distributor_Gamma': 'http://beergame.org/factory#Factory_Delta'
+        };
+        
+        const links = [];
+        
+        this.data.forEach(decision => {
+            const upstreamActor = actorHierarchy[decision.actor];
+            if (!upstreamActor) return;
+            
+            const arrivalWeek = decision.week + 2;
+            
+            const upstreamDecision = this.data.find(d => 
+                d.actor === upstreamActor && d.week === arrivalWeek
+            );
+            
+            if (upstreamDecision) {
+                links.push({
+                    source: decision,
+                    target: upstreamDecision,
+                    quantity: decision.orderQty,
+                    amplification: decision.orderQty / decision.demandRate
+                });
+            }
+        });
+        
+        return links;
+    }
+    
+    setupAnimationControls() {
+    const playBtn = document.getElementById('play-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const speedSelect = document.getElementById('speed-select');
+    
+    if (!playBtn || !resetBtn || !speedSelect) return;
+    
+    playBtn.addEventListener('click', () => this.togglePlayPause());
+    resetBtn.addEventListener('click', () => this.resetAnimation());
+    speedSelect.addEventListener('change', (e) => {
+        this.animationSpeed = 1000 / parseFloat(e.target.value);
+        if (this.isPlaying) {
+            this.stopAnimation();
+            this.startAnimation();
+            }
+        });
+    }
+
+    togglePlayPause() {
+        if (this.isPlaying) {
+            this.pauseAnimation();
+        } else {
+            this.playAnimation();
+        }
+    }
+
+    playAnimation() {
+        const playBtn = document.getElementById('play-btn');
+        playBtn.textContent = '⏸️ Pause';
+        playBtn.classList.add('playing');
+        
+        this.isPlaying = true;
+        this.startAnimation();
+    }
+
+    pauseAnimation() {
+        const playBtn = document.getElementById('play-btn');
+        playBtn.textContent = '▶️ Play';
+        playBtn.classList.remove('playing');
+        
+        this.isPlaying = false;
+        this.stopAnimation();
+    }
+
+    resetAnimation() {
+        this.stopAnimation();
+        this.currentWeek = 0;
+        this.isPlaying = false;
+        
+        const playBtn = document.getElementById('play-btn');
+        playBtn.textContent = '▶️ Play';
+        playBtn.classList.remove('playing');
+        
+        // Hide all elements
+        this.svg.selectAll('.decision-point').style('display', 'none');
+        this.svg.selectAll('.propagation-arrow').style('display', 'none');
+        this.svg.selectAll('.quality-indicator').style('display', 'none');
+        
+        document.getElementById('current-week').textContent = 'Week -';
+    }
+
+    startAnimation() {
+        const weeks = [...new Set(this.data.map(d => d.week))].sort((a, b) => a - b);
+        
+        if (this.currentWeek === 0) {
+            // Start from the beginning
+            this.resetAnimation();
+            this.currentWeek = weeks[0];
+        }
+        
+        this.animationTimer = setInterval(() => {
+            this.showWeek(this.currentWeek);
+            
+            const currentIndex = weeks.indexOf(this.currentWeek);
+            if (currentIndex < weeks.length - 1) {
+                this.currentWeek = weeks[currentIndex + 1];
+            } else {
+                // End of animation
+                this.pauseAnimation();
+                this.currentWeek = 0; // Reset for next play
+            }
+        }, this.animationSpeed);
+    }
+
+    stopAnimation() {
+        if (this.animationTimer) {
+            clearInterval(this.animationTimer);
+            this.animationTimer = null;
+        }
+    }
+
+    showWeek(week) {
+        document.getElementById('current-week').textContent = `Week ${week}`;
+        
+        // Show this week's decisions with animation
+        const decisionsThisWeek = this.data.filter(d => d.week === week);
+        
+        decisionsThisWeek.forEach(decision => {
+            // Show decision circle
+            this.svg.selectAll('.decision-point')
+                .filter(d => d === decision)
+                .style('display', 'block')
+                .classed('animated-enter', true)
+                .each(function() {
+                    // Remove class after animation
+                    setTimeout(() => {
+                        d3.select(this).classed('animated-enter', false);
+                    }, 400);
+                });
+            
+            // Show quality indicator if exists
+            if (decision.quality) {
+                this.svg.selectAll('.quality-indicator')
+                    .filter(d => d === decision)
+                    .style('display', 'block');
+            }
+            
+            // Show outgoing arrows
+            const outgoingLinks = this.links.filter(link => link.source === decision);
+            outgoingLinks.forEach(link => {
+                this.svg.selectAll('.propagation-arrow')
+                    .filter(l => l === link)
+                    .style('display', this.showArrows ? 'block' : 'none')
+                    .attr('stroke-dasharray', '100')
+                    .attr('stroke-dashoffset', '100')
+                    .classed('animated-enter', true)
+                    .transition()
+                    .duration(600)
+                    .attr('stroke-dashoffset', '0')
+                    .on('end', function() {
+                        d3.select(this)
+                            .attr('stroke-dasharray', 'none')
+                            .classed('animated-enter', false);
+                    });
+            });
+        });
+    }
+    
     render() {
         // Clear container
         this.container.html('');
@@ -274,6 +553,10 @@ class DecisionTimeline {
             .domain([0, d3.max(this.data, d => d.orderQty / d.demandRate)])
             .range([CONFIG.visualization.pointRadius.min, CONFIG.visualization.pointRadius.max]);
         
+        const strokeScale = d3.scaleLinear()
+            .domain([0, d3.max(this.data, d => d.orderQty)])
+            .range([1, 8]);
+        
         // Grid
         g.append('g')
             .attr('class', 'grid')
@@ -303,6 +586,45 @@ class DecisionTimeline {
             .attr('class', 'axis y-axis')
             .call(yAxis);
         
+        // Compute propagation links
+        this.links = this.computePropagationLinks();
+        
+        // Draw arrows
+        const arrowsGroup = g.append('g').attr('class', 'arrows-layer');
+        
+        // Define arrow marker
+        const defs = this.svg.append('defs');
+        
+        defs.append('marker')
+            .attr('id', 'arrowhead')
+            .attr('markerWidth', 6)
+            .attr('markerHeight', 6)
+            .attr('refX', 5)
+            .attr('refY', 2)
+            .attr('orient', 'auto')
+            .append('polygon')
+            .attr('points', '0 0, 6 2, 0 4')
+            .attr('fill', '#666');
+        
+        const arrows = arrowsGroup.selectAll('.propagation-arrow')
+            .data(this.links)
+            .enter()
+            .append('line')
+            .attr('class', 'propagation-arrow')
+            .attr('x1', d => xScale(d.source.week))
+            .attr('y1', d => yScale(d.source.actorName) + yScale.bandwidth() / 2)
+            .attr('x2', d => xScale(d.target.week))
+            .attr('y2', d => yScale(d.target.actorName) + yScale.bandwidth() / 2)
+            .attr('stroke', d => {
+                if (d.amplification > 2.0) return '#F44336';
+                if (d.amplification > 1.5) return '#FF9800';
+                return '#9E9E9E';
+            })
+            .attr('stroke-width', d => strokeScale(d.quantity))
+            .attr('stroke-opacity', 0.4)
+            .attr('marker-end', 'url(#arrowhead)')
+            .style('pointer-events', 'none');
+        
         // Decision points
         const self = this;
         const points = g.selectAll('.decision-point')
@@ -318,22 +640,22 @@ class DecisionTimeline {
             .on('click', (event, d) => this.showContextDetail(d))
             .on('mouseenter', function(event, d) {
                 d3.select(this)
-                    .attr('opacity', 1)
                     .attr('stroke', '#333')
                     .attr('stroke-width', 2);
                 self.showTooltip(event, d);
+                self.highlightConnections(d);
             })
             .on('mousemove', (event) => {
                 self.updateTooltipPosition(event);
             })
             .on('mouseleave', function() {
                 d3.select(this)
-                    .attr('opacity', 0.8)
                     .attr('stroke', 'none');
                 self.hideTooltip();
+                self.resetHighlight();
             });
         
-        // Quality indicators (small dots)
+        // Quality indicators
         g.selectAll('.quality-indicator')
             .data(this.data.filter(d => d.quality))
             .enter()
@@ -376,6 +698,32 @@ class DecisionTimeline {
                 .style('background-color', color);
             item.append('span').text(quality);
         });
+        
+        legend.append('div').style('width', '100%');
+        
+        // Arrows legend
+        legend.append('div').style('font-weight', 'bold').text('Propagation:');
+        
+        const arrowNormal = legend.append('div').attr('class', 'legend-item');
+        arrowNormal.append('div')
+            .style('width', '20px')
+            .style('height', '3px')
+            .style('background-color', '#9E9E9E');
+        arrowNormal.append('span').text('normal flow');
+        
+        const arrowBullwhip = legend.append('div').attr('class', 'legend-item');
+        arrowBullwhip.append('div')
+            .style('width', '20px')
+            .style('height', '4px')
+            .style('background-color', '#FF9800');
+        arrowBullwhip.append('span').text('bullwhip (1.5-2x)');
+        
+        const arrowHigh = legend.append('div').attr('class', 'legend-item');
+        arrowHigh.append('div')
+            .style('width', '20px')
+            .style('height', '5px')
+            .style('background-color', '#F44336');
+        arrowHigh.append('span').text('high amplification (>2x)');
     }
     
     showContextDetail(context) {

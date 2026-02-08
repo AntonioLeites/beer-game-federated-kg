@@ -20,6 +20,9 @@
             <button id="export-btn" class="export-button" title="Export timeline as PNG">
                 📥 Export PNG
             </button>
+            <button id="arrows-toggle" class="toggle-button" title="Show/hide propagation arrows">
+                🔗 Hide Arrows
+            </button>
         </header>
         
         <!-- Stats Dashboard -->
@@ -29,6 +32,28 @@
                 <div class="stat-card">
                     <h3>Loading...</h3>
                     <div class="value">-</div>
+                </div>
+            </div>
+            
+            <!-- Animation Controls -->
+            <div class="animation-controls">
+                <button id="play-btn" class="control-btn" title="Play animation">
+                    ▶️ Play
+                </button>
+                <button id="reset-btn" class="control-btn" title="Reset to beginning">
+                    ⏮️ Reset
+                </button>
+                <div class="speed-control">
+                    <label>Speed:</label>
+                    <select id="speed-select">
+                        <option value="0.5">0.5x</option>
+                        <option value="1" selected>1x</option>
+                        <option value="2">2x</option>
+                        <option value="4">4x</option>
+                    </select>
+                </div>
+                <div class="progress-info">
+                    <span id="current-week">Week -</span>
                 </div>
             </div>
             
