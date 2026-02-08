@@ -44,3 +44,6 @@ v4_simulation_report_*.json
 
 # Environment files
 .env
+SWRL_Rules/*_new.py
+SWRL_Rules/check_data.py
+SWRL_Rules/fix_context_links.py
