@@ -553,3 +553,116 @@ bg:ContextConsistencyShape a sh:NodeShape ;
             }
         """ ;
     ] .
+
+# ============================================================
+# V3.3: DECISION-CONTEXT SEPARATION VALIDATION
+# ============================================================
+
+# Decision Shape - Every decision must have context and belong to actor
+bg:DecisionShape a sh:NodeShape ;
+    sh:targetClass bg:Decision ;
+    
+    # Must be made by exactly one Actor
+    sh:property [
+        sh:path bg:madeBy ;
+        sh:class bg:Actor ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Decision must be made by exactly one Actor." ;
+    ] ;
+    
+    # Must be associated with exactly one Week
+    sh:property [
+        sh:path bg:forWeek ;
+        sh:class bg:Week ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Decision must be associated with exactly one Week." ;
+    ] ;
+    
+    # Must have exactly one DecisionContext
+    sh:property [
+        sh:path bg:hasDecisionContext ;
+        sh:class bg:DecisionContext ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Decision must have exactly one DecisionContext." ;
+    ] ;
+    
+    # Must have decision rationale
+    sh:property [
+        sh:path bg:decisionRationale ;
+        sh:datatype xsd:string ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "Decision must have exactly one decision rationale." ;
+    ] .
+
+# ActionDecision Shape - Must produce an Order
+bg:ActionDecisionShape a sh:NodeShape ;
+    sh:targetClass bg:ActionDecision ;
+    
+    sh:property [
+        sh:path bg:producedOrder ;
+        sh:class bg:Order ;
+        sh:nodeKind sh:IRI ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:message "ActionDecision must produce exactly one Order." ;
+    ] .
+
+# NoActionDecision Shape - Must NOT produce an Order
+bg:NoActionDecisionShape a sh:NodeShape ;
+    sh:targetClass bg:NoActionDecision ;
+    
+    sh:sparql [
+        sh:message "NoActionDecision must NOT produce an Order." ;
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT $this
+            WHERE {
+                $this bg:producedOrder ?order .
+            }
+        """ ;
+    ] .
+
+# Ensure one decision per actor per week
+bg:UniqueDecisionPerActorWeekShape a sh:NodeShape ;
+    sh:targetClass bg:Decision ;
+    
+    sh:sparql [
+        sh:message "Only one Decision per Actor and Week is allowed." ;
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT $this
+            WHERE {
+                $this bg:madeBy ?actor ;
+                      bg:forWeek ?week .
+                
+                ?other a bg:Decision ;
+                       bg:madeBy ?actor ;
+                       bg:forWeek ?week .
+                
+                FILTER (?other != $this)
+            }
+        """ ;
+    ] .
+
+# Disjointness check - Decision cannot be both Action and NoAction
+bg:DecisionDisjointnessShape a sh:NodeShape ;
+    sh:targetClass bg:Decision ;
+    
+    sh:sparql [
+        sh:message "Decision cannot be both ActionDecision and NoActionDecision." ;
+        sh:select """
+            PREFIX bg: <http://beergame.org/ontology#>
+            SELECT $this
+            WHERE {
+                $this a bg:ActionDecision ;
+                      a bg:NoActionDecision .
+            }
+        """ ;
+    ] .

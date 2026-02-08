@@ -835,6 +835,295 @@ python advanced_simulation_v3.py
 
 ---
 
+## 🆕 V3.3 - Decision-Context Separation
+
+**Release Date:** February 8, 2026  
+**Status:** 🚧 In Development - Ontology complete, implementation pending
+
+### Conceptual Model
+
+**Key Insight:** V3.1 conflated three distinct concepts. V3.3 cleanly separates them:
+
+| Concept | What It Represents | Always Exists? |
+|---------|-------------------|----------------|
+| **Decision** | Cognitive event - what actor decided | ✅ Yes (every week) |
+| **DecisionContext** | Observed state snapshot | ✅ Yes (every week) |
+| **Order** | Operational effect - action taken | ⚠️ Only if ActionDecision |
+
+### Semantic Structure
+```
+Every Week, Every Actor:
+  Decision (happens ALWAYS)
+     ├─ madeBy → Actor
+     ├─ forWeek → Week
+     ├─ hasDecisionContext → DecisionContext (what was observed)
+     ├─ decisionRationale → string (why this decision)
+     └─ Type:
+           ├─ ActionDecision
+           │     └─ producedOrder → Order (what was done)
+           └─ NoActionDecision
+                 └─ (no order - inventory sufficient)
+```
+
+### Class Hierarchy
+```turtle
+bg:Decision (abstract)
+   ├─ bg:ActionDecision
+   │     └─ MUST have producedOrder → Order
+   └─ bg:NoActionDecision
+         ├─ MUST NOT have producedOrder
+         └─ owl:disjointWith ActionDecision
+```
+
+### Key Properties
+
+| Property | Domain | Range | Description |
+|----------|--------|-------|-------------|
+| `bg:madeBy` | Decision | Actor | Who made the decision |
+| `bg:hasDecisionContext` | Decision | DecisionContext | Observed state snapshot |
+| `bg:producedOrder` | ActionDecision | Order | Order created by decision |
+| `bg:decisionRationale` | Decision | string | Why this decision |
+| `bg:causedBullwhip` | Decision | boolean | Causal impact tracking |
+| `bg:causedStockout` | Decision | boolean | Causal impact tracking |
+
+**Backward Compatibility:**
+```turtle
+bg:basedOnContext rdfs:subPropertyOf bg:hasDecisionContext .
+# V3.1 code: ?order bg:basedOnContext ?context
+# Still works in V3.3 via property hierarchy
+```
+
+### Benefits Over V3.1
+
+| Issue in V3.1 | V3.3 Solution | Impact |
+|--------------|--------------|--------|
+| **Timeline gaps** | Decision exists every week | Continuous timeline ✅ |
+| **Semantic confusion** | Decision ≠ Context separation | Clean model ✅ |
+| **Inference problems** | Disjoint classes | No duplicates ✅ |
+| **Missing "no action"** | NoActionDecision captures it | Complete traceability ✅ |
+| **Causal attribution** | Decision → causedBullwhip | Proper attribution ✅ |
+
+### Example Instances
+
+#### Week 5: Actor Decides to Order (ActionDecision)
+```turtle
+:decision_week5 a bg:ActionDecision ;
+    bg:madeBy bg_retailer:Retailer_Alpha ;
+    bg:forWeek bg:Week_5 ;
+    bg:hasDecisionContext :context_week5 ;
+    bg:decisionRationale "Low inventory (2 units), increasing demand trend (4→8→6.4/wk)" ;
+    bg:producedOrder :order_week5 ;
+    bg:causedBullwhip false .
+
+:context_week5 a bg:DecisionContext ;
+    bg:belongsTo bg_retailer:Retailer_Alpha ;
+    bg:forWeek bg:Week_5 ;
+    bg:capturesInventoryState :inv_week5 ;
+    bg:capturesMetrics :metrics_week5 ;
+    bg:activePolicy "balanced" ;
+    bg:perceivedTrend "increasing" ;
+    bg:riskAssessment "high" .
+
+:order_week5 a bg:Order ;
+    bg:placedBy bg_retailer:Retailer_Alpha ;
+    bg:forWeek bg:Week_5 ;
+    bg:orderQuantity 12 ;
+    bg:receivedBy bg_wholesaler:Wholesaler_Beta .
+```
+
+#### Week 8: Actor Decides NOT to Order (NoActionDecision)
+```turtle
+:decision_week8 a bg:NoActionDecision ;
+    bg:madeBy bg_retailer:Retailer_Alpha ;
+    bg:forWeek bg:Week_8 ;
+    bg:hasDecisionContext :context_week8 ;
+    bg:decisionRationale "Sufficient inventory (18 units), coverage 4.5 weeks at current demand" .
+
+:context_week8 a bg:DecisionContext ;
+    bg:belongsTo bg_retailer:Retailer_Alpha ;
+    bg:forWeek bg:Week_8 ;
+    bg:capturesInventoryState :inv_week8 ;
+    bg:capturesMetrics :metrics_week8 ;
+    bg:activePolicy "observing" ;
+    bg:perceivedTrend "stable" ;
+    bg:riskAssessment "low" .
+
+# No Order entity created for Week 8
+```
+
+### Timeline Query (Clean, No Duplicates)
+```sparql
+PREFIX bg: <http://beergame.org/ontology#>
+
+SELECT ?week ?actor ?decisionType ?hasOrder ?rationale
+WHERE {
+  ?decision a bg:Decision ;
+            bg:madeBy ?actor ;
+            bg:forWeek ?weekIRI ;
+            bg:decisionRationale ?rationale .
+  
+  ?weekIRI bg:weekNumber ?week .
+  
+  # Determine decision type
+  BIND(EXISTS{?decision a bg:ActionDecision} AS ?hasOrder)
+  BIND(IF(?hasOrder, "Action", "NoAction") AS ?decisionType)
+}
+ORDER BY ?week ?actor
+```
+
+**Expected Result (15-week simulation, 4 actors):**
+
+- **60 rows** (no gaps, no duplicates)
+- ~20-30 ActionDecisions (weeks with orders)
+- ~30-40 NoActionDecisions (weeks with sufficient inventory)
+
+### SHACL Validation
+
+V3.3 enforces:
+
+1. **Every Decision has Context** (minCount 1, maxCount 1)
+2. **ActionDecision must produce Order** (minCount 1, maxCount 1)
+3. **NoActionDecision must NOT produce Order** (SPARQL constraint)
+4. **One Decision per Actor per Week** (uniqueness constraint)
+5. **Disjoint types** (cannot be both Action and NoAction)
+
+### Migration from V3.1
+
+**Backward Compatible:** V3.1 queries continue to work.
+
+**V3.1 Query:**
+
+```sparql
+SELECT ?context ?order
+WHERE {
+    ?order bg:basedOnContext ?context .
+}
+```
+
+**V3.3 Equivalent:**
+```sparql
+SELECT ?context ?order
+WHERE {
+    ?decision a bg:ActionDecision ;
+              bg:hasDecisionContext ?context ;
+              bg:producedOrder ?order .
+}
+# Or use V3.1 syntax (still works via subPropertyOf)
+```
+
+### Implementation Status
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| **Ontology** | ✅ Complete | Classes, properties, disjointness defined |
+| **SHACL** | ✅ Complete | Validation constraints in place |
+| **Python Code** | 🚧 Pending | Need to update `create_decision_contexts()` |
+| **Dashboard** | 🚧 Pending | Need to handle NoActionDecision visualization |
+| **Testing** | ⏳ Not Started | Awaiting implementation |
+
+### Files Modified in V3.3
+
+```
+
+beer-game-federated-kg/
+├── ontology/
+│   ├── beer_game_ontology_v3.ttl        (modified - added Decision hierarchy)
+│   └── beer_game_shacl_v3_1.ttl         (modified - added validations)
+├── SWRL_Rules/
+│   └── temporal_beer_game_rules_v3.py   (pending - needs update)
+├── visualizations/
+│   └── js/
+│       ├── queries.js                    (pending - needs NoAction support)
+│       └── timeline.js                   (pending - needs NoAction viz)
+└── README_V3.md                          (modified - this documentation)
+```
+
+### Design Rationale
+
+#### Why Decision ≠ Context?
+
+**V3.1 Problem:**
+
+```turtle
+
+# DecisionContext was both:
+# 1. The decision itself (subclass of ActionDecision)
+# 2. The observed state (snapshot)
+# This confused "what I decided" with "what I saw"
+```
+
+**V3.3 Solution:**
+
+```turtle
+# Clean separation:
+Decision = "I decided to order 12 units" (cognitive event)
+Context = "I saw inventory=2, demand=6.4" (observed state)
+Order = "12 units ordered" (operational effect)
+```
+
+#### Why Disjoint Classes?
+
+**V3.1 Problem:** GraphDB inferred NoActionDecision as ActionDecision → duplicates
+
+**V3.3 Solution:** `owl:disjointWith` prevents inference overlap
+
+#### Why Always Create Decision?
+
+**V3.1 Behavior:**
+
+- Week with order → DecisionContext created ✅
+- Week without order → nothing created ❌ (timeline gap)
+
+**V3.3 Behavior:**
+
+- Week with order → ActionDecision + Context + Order ✅
+- Week without order → NoActionDecision + Context ✅ (no gap)
+
+**Result:** Continuous timeline, complete audit trail
+
+### Causal Attribution
+
+V3.3 moves causal properties to Decision level:
+
+```turtle
+# V3.1 (incorrect attribution)
+:context_week5 bg:causedBullwhip true .  # Context doesn't cause, decision does
+
+# V3.3 (correct attribution)
+:decision_week5 a bg:ActionDecision ;
+    bg:causedBullwhip true .              # Decision causes bullwhip
+```
+
+This enables queries like:
+
+```sparql
+# Which type of decisions cause more bullwhip?
+SELECT ?type (COUNT(*) as ?bullwhipEvents)
+WHERE {
+    ?decision a ?type ;
+              bg:causedBullwhip true .
+    FILTER(?type IN (bg:ActionDecision, bg:NoActionDecision))
+}
+GROUP BY ?type
+```
+
+### Future Work (V3.4+)
+
+- [ ] **Implement Python code** for Decision creation
+- [ ] **Update dashboard** to visualize NoActionDecisions differently
+- [ ] **Add decision metrics**: Time-to-decide, confidence scores
+- [ ] **Causal chains**: Link decisions causally (`triggeredBy` property)
+- [ ] **Alternative scenarios**: Store "what-if" decisions for counterfactuals
+
+### Resources
+
+- **Branch:** `feature/v3.3-decision-separation`
+- **Ontology:** [ontology/beer_game_ontology_v3.ttl](ontology/beer_game_ontology_v3.ttl)
+- **SHACL:** [ontology/beer_game_shacl_v3_1.ttl](ontology/beer_game_shacl_v3_1.ttl)
+
+
+---
+
 ## 📊 Interactive Visualization Dashboard
 
 V3.1 includes an interactive web dashboard for exploring decision contexts.

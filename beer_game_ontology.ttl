@@ -505,6 +505,69 @@ bg:causedStockout a owl:DatatypeProperty ;
     rdfs:label "caused stockout" ;
     rdfs:comment "True if this decision led to stockout in subsequent weeks" .
 
+# ============================================================
+# V3.3: DECISION-CONTEXT SEPARATION
+# Clean separation: Decision (cognitive) ≠ Context (observed state)
+# ============================================================
+
+# Decision - Cognitive event (happens ALWAYS)
+bg:Decision a owl:Class ;
+    rdfs:subClassOf bg:TemporalEntity ;
+    rdfs:label "Decision" ;
+    rdfs:comment "Cognitive event - actor evaluates context and decides action/no-action" .
+
+bg:ActionDecision a owl:Class ;
+    rdfs:subClassOf bg:Decision ;
+    rdfs:label "Action Decision" ;
+    rdfs:comment "Decision to take action (place order)" .
+
+bg:NoActionDecision a owl:Class ;
+    rdfs:subClassOf bg:Decision ;
+    owl:disjointWith bg:ActionDecision ;
+    rdfs:label "No Action Decision" ;
+    rdfs:comment "Decision to NOT act (inventory sufficient)" .
+
+# Decision properties
+bg:madeBy a owl:ObjectProperty ;
+    rdfs:domain bg:Decision ;
+    rdfs:range bg:Actor ;
+    rdfs:label "made by" ;
+    rdfs:comment "Actor who made the decision" .
+
+bg:hasDecisionContext a owl:ObjectProperty ;
+    rdfs:domain bg:Decision ;
+    rdfs:range bg:DecisionContext ;
+    rdfs:label "has decision context" ;
+    rdfs:comment "Context snapshot observed when making decision" .
+
+bg:decisionRationale a owl:DatatypeProperty ;
+    rdfs:domain bg:Decision ;
+    rdfs:range xsd:string ;
+    rdfs:label "decision rationale" ;
+    rdfs:comment "Why this decision was made" .
+
+# Causal properties
+bg:producedOrder a owl:ObjectProperty ;
+    rdfs:domain bg:ActionDecision ;
+    rdfs:range bg:Order ;
+    rdfs:label "produced order" ;
+    rdfs:comment "Order created by this action decision" .
+
+bg:causedBullwhip a owl:DatatypeProperty ;
+    rdfs:domain bg:Decision ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "caused bullwhip" .
+
+bg:causedStockout a owl:DatatypeProperty ;
+    rdfs:domain bg:Decision ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "caused stockout" .
+
+# Backward compatibility
+bg:basedOnContext rdfs:subPropertyOf bg:hasDecisionContext ;
+    rdfs:comment "DEPRECATED: Use hasDecisionContext. Kept for backward compatibility." .
+
+# NOTE: DecisionContext remains as ContextSnapshot (no change to existing code)
 
 # ============================================================
 # DOCUMENTATION
