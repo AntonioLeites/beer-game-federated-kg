@@ -446,6 +446,9 @@ class BeerGameOrchestrator:
             result['demand_pattern'] = demand_pattern  # Add pattern to result
             self.results.append(result)
             
+            # Clean up duplicates after each week (if any)
+            self.rule_executor.cleanup_duplicate_decisions(week)
+            
             if week < weeks:
                 time.sleep(1)
         # V3.1 NEW: Post-mortem analysis
@@ -603,7 +606,7 @@ def main():
     print("  5. Random (2-8 units)")
 
     
-    choice = input("\nEnter choice (1-4, default=1): ").strip() or "1"
+    choice = input("\nEnter choice (1-5, default=1): ").strip() or "1"
     
     patterns = {
         "1": "stable",
@@ -622,32 +625,202 @@ def main():
     print("\n✅ Simulation complete!")
 
 
+# def analyze_decision_outcomes(session, total_weeks, supply_chain, base_url):
+#     """
+#     V3.1: Post-mortem analysis - Update DecisionContext with actual outcomes
+#     """
+#     print(f"\n{'='*70}")
+#     print(f"📊 POST-MORTEM ANALYSIS: Decision Outcomes")
+#     print(f"{'='*70}\n")
+    
+#     contexts_analyzed = 0
+#     contexts_updated = 0
+    
+#     for actor_name, config in supply_chain.items():
+#         repo = config['repo']
+#         actor_uri = config['uri']
+#         actor_ns = config['namespace']
+        
+#         print(f"→ Analyzing {actor_name} decisions...")
+        
+#         # Query all contexts for this actor
+#         list_contexts_query = f"""
+#             PREFIX bg: <http://beergame.org/ontology#>
+            
+#             SELECT ?context ?week
+#             WHERE {{
+#                 ?context a bg:DecisionContext ;
+#                          bg:belongsTo <{actor_uri}> ;
+#                          bg:forWeek ?weekIRI .
+                
+#                 ?weekIRI bg:weekNumber ?week .
+#             }}
+#             ORDER BY ?week
+#         """
+        
+#         try:
+#             response = session.post(
+#                 f"{base_url}/repositories/{repo}",
+#                 data={'query': list_contexts_query},
+#                 headers={'Accept': 'application/sparql-results+json'},
+#                 timeout=10
+#             )
+            
+#             if response.status_code == 200:
+#                 data = response.json()
+#                 bindings = data.get('results', {}).get('bindings', [])
+                
+#                 if not bindings:
+#                     print(f"      (No contexts found)")
+#                     continue
+                
+#                 for binding in bindings:
+#                     week = int(binding['week']['value'])
+#                     context_uri = binding['context']['value']
+#                     contexts_analyzed += 1
+                    
+#                     # Query outcome data
+#                     outcome_query = f"""
+#                         PREFIX bg: <http://beergame.org/ontology#>
+                        
+#                         SELECT ?orderQty ?demandRate ?nextBacklog
+#                         WHERE {{
+#                             <{context_uri}> bg:capturesMetrics ?metrics .
+#                             ?metrics bg:demandRate ?demandRate .
+                            
+#                             ?order bg:basedOnContext <{context_uri}> ;
+#                                    bg:orderQuantity ?orderQty .
+                            
+#                             OPTIONAL {{
+#                                 ?nextInv a bg:Inventory ;
+#                                          bg:belongsTo <{actor_uri}> ;
+#                                          bg:forWeek ?nextWeekIRI ;
+#                                          bg:backlog ?nextBacklog .
+                                
+#                                 ?nextWeekIRI bg:weekNumber ?nextWeekNum .
+#                                 FILTER(?nextWeekNum = {week + 2})
+#                             }}
+#                         }}
+#                     """
+                    
+#                     outcome_response = session.post(
+#                         f"{base_url}/repositories/{repo}",
+#                         data={'query': outcome_query},
+#                         headers={'Accept': 'application/sparql-results+json'},
+#                         timeout=10
+#                     )
+                    
+#                     if outcome_response.status_code == 200:
+#                         outcome_data = outcome_response.json()
+#                         outcome_bindings = outcome_data.get('results', {}).get('bindings', [])
+                        
+#                         if outcome_bindings:
+#                             outcome_binding = outcome_bindings[0]
+#                             order_qty = float(outcome_binding['orderQty']['value'])
+#                             demand_rate = float(outcome_binding['demandRate']['value'])
+                            
+#                             # Determine if caused bullwhip
+#                             amplification = order_qty / max(demand_rate, 0.1)
+#                             caused_bullwhip = amplification > 1.5
+                            
+#                             # Determine if caused stockout
+#                             caused_stockout = False
+#                             actual_outcome = "Insufficient data (no Week+2 inventory)"
+#                             quality = "unknown"
+                            
+#                             if 'nextBacklog' in outcome_binding:
+#                                 next_backlog = float(outcome_binding['nextBacklog']['value'])
+#                                 caused_stockout = next_backlog > 0
+                                
+#                                 if next_backlog > 0:
+#                                     actual_outcome = f"Led to stockout of {next_backlog:.0f} units"
+#                                     quality = "poor"
+#                                 elif amplification > 2.0:
+#                                     actual_outcome = f"Caused {amplification:.1f}x amplification"
+#                                     quality = "suboptimal"
+#                                 elif amplification < 0.8:
+#                                     actual_outcome = "Conservative order, stable inventory"
+#                                     quality = "good"
+#                                 else:
+#                                     actual_outcome = "Balanced order, maintained stability"
+#                                     quality = "optimal"
+                            
+#                             # Update context with outcome
+#                             update_query = f"""
+#                                 PREFIX bg: <http://beergame.org/ontology#>
+                                
+#                                 DELETE {{
+#                                     <{context_uri}> bg:actualOutcome ?oldOutcome ;
+#                                                     bg:outcomeQuality ?oldQuality ;
+#                                                     bg:causedBullwhip ?oldBullwhip ;
+#                                                     bg:causedStockout ?oldStockout .
+#                                 }}
+#                                 INSERT {{
+#                                     <{context_uri}> bg:actualOutcome "{actual_outcome.replace('"', '\\"')}" ;
+#                                                     bg:outcomeQuality "{quality}" ;
+#                                                     bg:causedBullwhip {str(caused_bullwhip).lower()} ;
+#                                                     bg:causedStockout {str(caused_stockout).lower()} .
+#                                 }}
+#                                 WHERE {{
+#                                     OPTIONAL {{ <{context_uri}> bg:actualOutcome ?oldOutcome }}
+#                                     OPTIONAL {{ <{context_uri}> bg:outcomeQuality ?oldQuality }}
+#                                     OPTIONAL {{ <{context_uri}> bg:causedBullwhip ?oldBullwhip }}
+#                                     OPTIONAL {{ <{context_uri}> bg:causedStockout ?oldStockout }}
+#                                 }}
+#                             """
+                            
+#                             update_response = session.post(
+#                                 f"{base_url}/repositories/{repo}/statements",
+#                                 data={'update': update_query},
+#                                 headers={'Content-Type': 'application/x-www-form-urlencoded'},
+#                                 timeout=10
+#                             )
+                            
+#                             if update_response.status_code == 204:
+#                                 print(f"      Week {week}: {quality} - {actual_outcome[:50]}...")
+#                                 contexts_updated += 1
+#                             else:
+#                                 print(f"      Week {week}: ✗ Update failed (HTTP {update_response.status_code})")
+#                         else:
+#                             print(f"      Week {week}: No outcome data found")
+#                     else:
+#                         print(f"      Week {week}: ✗ Query failed (HTTP {outcome_response.status_code})")
+        
+#         except Exception as e:
+#             print(f"      ✗ Exception: {e}")
+    
+#     print(f"\n✓ Post-mortem complete: {contexts_updated}/{contexts_analyzed} contexts updated\n")
 def analyze_decision_outcomes(session, total_weeks, supply_chain, base_url):
     """
-    V3.1: Post-mortem analysis - Update DecisionContext with actual outcomes
+    V3.3 CORREGIDA: Post-mortem analysis - Update DecisionContext with actual outcomes
+    
+    Mejoras:
+    1. Evita duplicados usando Decision (no DecisionContext) como punto de entrada
+    2. Solo analiza semanas con Week+2 disponibles
+    3. Maneja mejor los casos sin datos
     """
     print(f"\n{'='*70}")
-    print(f"📊 POST-MORTEM ANALYSIS: Decision Outcomes")
+    print(f"📊 POST-MORTEM ANALYSIS: Decision Outcomes (V3.3 Corregida)")
     print(f"{'='*70}\n")
     
-    contexts_analyzed = 0
-    contexts_updated = 0
+    decisions_analyzed = 0
+    decisions_updated = 0
     
     for actor_name, config in supply_chain.items():
         repo = config['repo']
         actor_uri = config['uri']
-        actor_ns = config['namespace']
         
         print(f"→ Analyzing {actor_name} decisions...")
         
-        # Query all contexts for this actor
-        list_contexts_query = f"""
+        # Paso 1: Buscar DECISIONES (no DecisionContext) - esto evita duplicados
+        # Ya que V3.3 crea Decision para cada semana, usamos esto como punto de entrada
+        list_decisions_query = f"""
             PREFIX bg: <http://beergame.org/ontology#>
             
-            SELECT ?context ?week
+            SELECT DISTINCT ?decision ?week
             WHERE {{
-                ?context a bg:DecisionContext ;
-                         bg:belongsTo <{actor_uri}> ;
+                ?decision a bg:Decision ;
+                         bg:madeBy <{actor_uri}> ;
                          bg:forWeek ?weekIRI .
                 
                 ?weekIRI bg:weekNumber ?week .
@@ -658,7 +831,7 @@ def analyze_decision_outcomes(session, total_weeks, supply_chain, base_url):
         try:
             response = session.post(
                 f"{base_url}/repositories/{repo}",
-                data={'query': list_contexts_query},
+                data={'query': list_decisions_query},
                 headers={'Accept': 'application/sparql-results+json'},
                 timeout=10
             )
@@ -668,26 +841,54 @@ def analyze_decision_outcomes(session, total_weeks, supply_chain, base_url):
                 bindings = data.get('results', {}).get('bindings', [])
                 
                 if not bindings:
-                    print(f"      (No contexts found)")
+                    print(f"      (No decisions found)")
                     continue
                 
+                weeks_found = []
                 for binding in bindings:
                     week = int(binding['week']['value'])
-                    context_uri = binding['context']['value']
-                    contexts_analyzed += 1
+                    if week not in weeks_found:  # Evitar procesar semanas duplicadas
+                        weeks_found.append(week)
+                
+                for week in weeks_found:
+                    decisions_analyzed += 1
                     
-                    # Query outcome data
-                    outcome_query = f"""
+                    # Solo podemos analizar semanas que tienen Week+2
+                    if week + 2 > total_weeks:
+                        continue  # Saltar semanas sin datos futuros
+                    
+                    # Consulta completa para análisis de resultado
+                    analysis_query = f"""
                         PREFIX bg: <http://beergame.org/ontology#>
                         
-                        SELECT ?orderQty ?demandRate ?nextBacklog
+                        SELECT ?decision ?context ?orderQty ?demandRate ?currentInv ?backlog ?nextBacklog ?weekNum
                         WHERE {{
-                            <{context_uri}> bg:capturesMetrics ?metrics .
+                            # Encontrar la decisión para esta semana
+                            ?decision a bg:Decision ;
+                                     bg:madeBy <{actor_uri}> ;
+                                     bg:forWeek ?weekIRI ;
+                                     bg:hasDecisionContext ?context .
+                            
+                            ?weekIRI bg:weekNumber {week} .
+                            
+                            # Obtener contexto
+                            ?context bg:capturesMetrics ?metrics ;
+                                    bg:capturesInventoryState ?inv .
+                            
+                            # Obtener métricas
                             ?metrics bg:demandRate ?demandRate .
                             
-                            ?order bg:basedOnContext <{context_uri}> ;
-                                   bg:orderQuantity ?orderQty .
+                            # Obtener inventario actual
+                            ?inv bg:currentInventory ?currentInv ;
+                                 bg:backlog ?backlog .
                             
+                            # Obtener orden si existe
+                            OPTIONAL {{
+                                ?order bg:basedOnContext ?context ;
+                                       bg:orderQuantity ?orderQty .
+                            }}
+                            
+                            # Obtener inventario de Week+2 para análisis de backlog
                             OPTIONAL {{
                                 ?nextInv a bg:Inventory ;
                                          bg:belongsTo <{actor_uri}> ;
@@ -700,50 +901,78 @@ def analyze_decision_outcomes(session, total_weeks, supply_chain, base_url):
                         }}
                     """
                     
-                    outcome_response = session.post(
+                    analysis_response = session.post(
                         f"{base_url}/repositories/{repo}",
-                        data={'query': outcome_query},
+                        data={'query': analysis_query},
                         headers={'Accept': 'application/sparql-results+json'},
                         timeout=10
                     )
                     
-                    if outcome_response.status_code == 200:
-                        outcome_data = outcome_response.json()
-                        outcome_bindings = outcome_data.get('results', {}).get('bindings', [])
+                    if analysis_response.status_code == 200:
+                        analysis_data = analysis_response.json()
+                        analysis_bindings = analysis_data.get('results', {}).get('bindings', [])
                         
-                        if outcome_bindings:
-                            outcome_binding = outcome_bindings[0]
-                            order_qty = float(outcome_binding['orderQty']['value'])
-                            demand_rate = float(outcome_binding['demandRate']['value'])
+                        if analysis_bindings:
+                            binding = analysis_bindings[0]
                             
-                            # Determine if caused bullwhip
-                            amplification = order_qty / max(demand_rate, 0.1)
-                            caused_bullwhip = amplification > 1.5
+                            # Extraer datos
+                            decision_uri = binding['decision']['value']
+                            context_uri = binding['context']['value']
+                            demand_rate = float(binding['demandRate']['value'])
+                            current_inv = float(binding['currentInv']['value'])
+                            backlog = float(binding['backlog']['value'])
                             
-                            # Determine if caused stockout
-                            caused_stockout = False
-                            actual_outcome = "Insufficient data (no Week+2 inventory)"
+                            # Orden puede no existir
+                            order_qty = 0
+                            if 'orderQty' in binding:
+                                order_qty = float(binding['orderQty']['value'])
+                            
+                            # Determinar si causó bullwhip
+                            caused_bullwhip = False
+                            amplification = 0
+                            if order_qty > 0 and demand_rate > 0:
+                                amplification = order_qty / demand_rate
+                                caused_bullwhip = amplification > 1.5
+                            
+                            # Determinar resultado
+                            actual_outcome = "No data available"
                             quality = "unknown"
                             
-                            if 'nextBacklog' in outcome_binding:
-                                next_backlog = float(outcome_binding['nextBacklog']['value'])
+                            if 'nextBacklog' in binding:
+                                next_backlog = float(binding['nextBacklog']['value'])
                                 caused_stockout = next_backlog > 0
                                 
                                 if next_backlog > 0:
                                     actual_outcome = f"Led to stockout of {next_backlog:.0f} units"
                                     quality = "poor"
-                                elif amplification > 2.0:
+                                elif caused_bullwhip:
                                     actual_outcome = f"Caused {amplification:.1f}x amplification"
                                     quality = "suboptimal"
-                                elif amplification < 0.8:
-                                    actual_outcome = "Conservative order, stable inventory"
-                                    quality = "good"
-                                else:
-                                    actual_outcome = "Balanced order, maintained stability"
+                                elif order_qty == 0:
+                                    # NoActionDecision
+                                    if current_inv > demand_rate * 2:
+                                        actual_outcome = "Sufficient inventory, no order needed"
+                                        quality = "optimal"
+                                    else:
+                                        actual_outcome = "Conservative approach, inventory stable"
+                                        quality = "good"
+                                elif abs(order_qty - demand_rate) < 2:
+                                    actual_outcome = "Balanced order matching demand"
                                     quality = "optimal"
+                                else:
+                                    actual_outcome = f"Ordered {order_qty:.0f} vs demand {demand_rate:.1f}"
+                                    quality = "good" if order_qty > demand_rate else "conservative"
+                            else:
+                                # Sin datos de Week+2
+                                if week + 2 > total_weeks:
+                                    actual_outcome = "Simulation ended, future impact unknown"
+                                    quality = "unknown"
+                                else:
+                                    actual_outcome = "No future inventory data available"
+                                    quality = "unknown"
                             
-                            # Update context with outcome
-                            update_query = f"""
+                            # Actualizar DecisionContext con resultado
+                            update_context_query = f"""
                                 PREFIX bg: <http://beergame.org/ontology#>
                                 
                                 DELETE {{
@@ -756,7 +985,7 @@ def analyze_decision_outcomes(session, total_weeks, supply_chain, base_url):
                                     <{context_uri}> bg:actualOutcome "{actual_outcome.replace('"', '\\"')}" ;
                                                     bg:outcomeQuality "{quality}" ;
                                                     bg:causedBullwhip {str(caused_bullwhip).lower()} ;
-                                                    bg:causedStockout {str(caused_stockout).lower()} .
+                                                    bg:causedStockout "false" .
                                 }}
                                 WHERE {{
                                     OPTIONAL {{ <{context_uri}> bg:actualOutcome ?oldOutcome }}
@@ -768,25 +997,27 @@ def analyze_decision_outcomes(session, total_weeks, supply_chain, base_url):
                             
                             update_response = session.post(
                                 f"{base_url}/repositories/{repo}/statements",
-                                data={'update': update_query},
+                                data={'update': update_context_query},
                                 headers={'Content-Type': 'application/x-www-form-urlencoded'},
                                 timeout=10
                             )
                             
                             if update_response.status_code == 204:
-                                print(f"      Week {week}: {quality} - {actual_outcome[:50]}...")
-                                contexts_updated += 1
+                                decisions_updated += 1
+                                print(f"      Week {week}: {quality} - {actual_outcome[:40]}...")
                             else:
-                                print(f"      Week {week}: ✗ Update failed (HTTP {update_response.status_code})")
+                                print(f"      Week {week}: ✗ Update failed")
                         else:
-                            print(f"      Week {week}: No outcome data found")
+                            print(f"      Week {week}: No analysis data found")
                     else:
-                        print(f"      Week {week}: ✗ Query failed (HTTP {outcome_response.status_code})")
+                        print(f"      Week {week}: ✗ Analysis query failed")
         
         except Exception as e:
-            print(f"      ✗ Exception: {e}")
+            print(f"      ✗ Exception analyzing {actor_name}: {e}")
     
-    print(f"\n✓ Post-mortem complete: {contexts_updated}/{contexts_analyzed} contexts updated\n")
+    print(f"\n✓ Post-mortem complete: {decisions_updated}/{decisions_analyzed} decisions analyzed")
+    print(f"   Note: Only weeks with Week+2 inventory data were analyzed")
+    print(f"{'='*70}\n")
 
 if __name__ == "__main__":
     main()

@@ -114,6 +114,7 @@ beer-game-federated-kg/
 ### Prerequisites
 
 Same as main README:
+
 - Ontotext GraphDB Free (or commercial)
 - Python 3.13+
 - Dependencies: `requests`, `rdflib`, `matplotlib`, `seaborn`
@@ -225,6 +226,7 @@ python compare_results_graph_V3.py beer_game_report_20260111_*.json --individual
 ```
 
 **Output files:**
+
 - `beer_game_dashboard_2026-01-11.png` - Overview with all actors
 - `beer_game_2026-01-11_retailer.png` - Retailer detailed analysis
 - `beer_game_2026-01-11_wholesaler.png` - Wholesaler detailed analysis
@@ -236,6 +238,7 @@ python compare_results_graph_V3.py beer_game_report_20260111_*.json --individual
 ## 📊 V3 Validation Results
 
 ### Test Configuration
+
 - **Demand Pattern:** Spike (12 units at Week 3)
 - **Simulation Period:** Weeks 2-6
 - **Theoretical Baseline:** Manual calculation with 1-week lag
@@ -250,6 +253,7 @@ python compare_results_graph_V3.py beer_game_report_20260111_*.json --individual
 | **Factory** | 12 | 5 (42%) | 3 (25%) | 4 (33%) | **70%** ⚠️ |
 
 **Legend:**
+
 - ✅ **Match** (diff < 0.1): Perfect match with theoretical
 - ⚠️ **Close** (diff < 2.0): Minor rounding/timing difference
 - ❌ **Diff** (diff ≥ 2.0): Significant difference
@@ -299,6 +303,7 @@ python compare_results_graph_V3.py beer_game_report_20260111_*.json --individual
 ![Dashboard](beer_game_dashboard_2026-01-11.png)
 
 **Key Observations:**
+
 - **Inventory tracking:** Retailer/Wholesaler perfect match (overlapping lines)
 - **Backlog:** All actors maintain zero backlog (stable system)
 - **Bullwhip effect:** Clearly visible - demand variability increases upstream
@@ -835,6 +840,102 @@ python advanced_simulation_v3.py
 
 ---
 
+### V3.1 Limitations: Timeline Gaps
+
+**Discovery Date:** February 8, 2026 (during V3.3 development)
+
+#### The Problem
+
+V3.1 only creates `DecisionContext` when an `Order` is placed (`suggestedOrderQuantity > 0`). This creates **timeline gaps** in weeks where inventory is sufficient.
+
+**Example from 15-week spike simulation (Retailer Alpha):**
+
+| Week Range | Inventory | Metrics | Context | Order | Status |
+|------------|-----------|---------|---------|-------|--------|
+| 1-4 | ✅ | ✅ | ✅ | ✅ | Complete |
+| **5-10** | ✅ | ✅ | **❌** | **❌** | **GAP** |
+| 11-14 | ✅ | ✅ | ✅ | ✅ | Complete |
+| 15 | ✅ | ✅ | **❌** | **❌** | **GAP** |
+
+**Total across all actors (15 weeks × 4 actors = 60 possible decisions):**
+- ✅ Contexts created: **11** (only when orders placed)
+- ❌ Missing decisions: **49** (82% of timeline missing)
+
+#### Why This Matters
+
+**1. Incomplete Audit Trail**
+
+The decision to **NOT order** is also a decision that should be traced:
+
+```sparql
+# V3.1: Cannot answer this query
+"Why didn't Retailer order in Week 7?"
+→ No DecisionContext exists
+→ Cannot determine: Was it intentional? What was the rationale?
+```
+
+**2. Broken Timeline Visualization**
+
+Dashboard shows disconnected points instead of continuous timeline:
+
+```
+Week:  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15
+       ●  ●  ●  ●  -  -  -  -  -  -  ●  ●  ●  ●  -
+       ^           ^Gap (6 weeks)^     ^        ^Gap
+```
+![Gaps in Decision Timeline Dashboard](visualizations/images/dashboard_timeline-V31.png)
+
+**3. Incomplete Causal Analysis**
+
+Cannot track:
+
+- "Which weeks had sufficient inventory?" (no context to query)
+- "Did passive weeks contribute to later bullwhip?" (no decision to link causally)
+- "What was the coverage threshold for not ordering?" (no rationale captured)
+
+#### Why V3.1 Has This Limitation
+
+**Design Decision:**
+
+```python
+# V3.1 logic (simplified)
+if suggested_qty > 0:
+    create_order()
+    create_context()  # Only here!
+else:
+    pass  # No order, no context → GAP
+```
+
+**Rationale (at the time):**
+
+- Simpler: Context only when Order exists
+- Order-centric: "Decision = placing an order"
+- Reduced data: Fewer triples in GraphDB
+
+**What we learned:**
+
+- "No action" is also a decision worth tracing
+- Timeline gaps make analysis difficult
+- Missing 82% of decision moments is too much
+
+#### V3.3 Solution Preview
+
+V3.3 introduces `Decision` hierarchy:
+
+```python
+# V3.3 logic (every week, every actor)
+if suggested_qty > 0:
+    create_action_decision()  # Links to Order
+else:
+    create_no_action_decision()  # No Order, but decision exists
+    
+# Result: 60/60 decisions (no gaps)
+```
+
+See **V3.3 Decision-Context Separation** section below for complete design.
+
+---
+
 ## 🆕 V3.3 - Decision-Context Separation
 
 **Release Date:** February 8, 2026  
@@ -1001,6 +1102,7 @@ WHERE {
 ```
 
 **V3.3 Equivalent:**
+
 ```sparql
 SELECT ?context ?order
 WHERE {
@@ -1130,6 +1232,7 @@ V3.1 includes an interactive web dashboard for exploring decision contexts.
 
 ![Decision Timeline Dashboard](visualizations/images/dashboard_overview.png)
 
+
 ### Features
 
 - **Interactive Timeline:** D3.js visualization of all decisions
@@ -1184,6 +1287,7 @@ See [visualizations/README.md](visualizations/README.md) for complete documentat
 - **[graphdb_troubleshooting.md](./graphdb_troubleshooting.md)**: GraphDB issues
 
 **V3-Specific Docs:**
+
 - **[V3_IMPORT_INSTRUCTIONS.md](./V3_IMPORT_INSTRUCTIONS.md)**: TTL import guide
 - This file (README_V3.md): V3 overview and validation
 
@@ -1212,11 +1316,13 @@ MIT License - Same as main project
 ## 🙏 Acknowledgments
 
 **V3 Development:**
+
 - Inspired by FedX federation architecture (Ontotext GraphDB)
 - Validated against manual calculations and V2 baseline
 - Visualization tools built with matplotlib/seaborn
 
 **Special Thanks:**
+
 - Ontotext GraphDB team for excellent federated SPARQL support
 - Community feedback on V2 limitations (manual propagation)
 
@@ -1225,6 +1331,7 @@ MIT License - Same as main project
 **V3 Status:** ✅ **Stable Release** - Validated with spike pattern, ready for production testing
 
 **Migration Path:**
+
 - V2 → V3: Load V3 TTLs, use `advanced_simulation_v3.py`
 - V3 → V2: Restore V2 TTLs, use `advanced_simulation_v2.py`
 

@@ -1,10 +1,13 @@
-// Timeline Visualization with D3.js
+// Decision Timeline Visualization with D3.js - V3.3 Complete Timeline
+// Supports ActionDecision and NoActionDecision for complete decision tracking
 
 class DecisionTimeline {
     constructor(containerId) {
         this.container = d3.select(`#${containerId}`);
         this.svg = null;
         this.data = null;
+        this.connectionsData = null;
+        this.hierarchyData = null;
         this.selectedContext = null;
         this.tooltip = null;
         this.showArrows = true;
@@ -13,8 +16,16 @@ class DecisionTimeline {
         // Animation properties
         this.isPlaying = false;
         this.currentWeek = 0;
-        this.animationSpeed = 1000; // ms por week
+        this.animationSpeed = 1000; // ms per week
         this.animationTimer = null;
+        
+        // Supply chain actor order (top to bottom in visualization)
+        this.actorOrder = {
+            'Factory': 1,
+            'Distributor': 2,
+            'Wholesaler': 3,
+            'Retailer': 4
+        };
     }
     
     async init() {
@@ -22,28 +33,31 @@ class DecisionTimeline {
             // Show loading
             this.showLoading();
             
-            // Fetch data
-            this.data = await fetchContexts();
+            // Fetch all data using V3.3 queries
+            const allData = await fetchAllData();
             
-            if (this.data.length === 0) {
+            if (allData.contexts.length === 0) {
                 this.showError('No decision contexts found. Run a simulation first.');
                 return;
             }
             
+            // Store data
+            this.data = allData.contexts;
+            this.connectionsData = allData.connections;
+            this.hierarchyData = allData.hierarchy;
+            
             // Create tooltip
             this.createTooltip();
             
-            // Render
+            // Render visualization
             this.render();
-            this.updateStats();
             
-            // Setup export button
+            // Update statistics
+            this.updateStats(allData.stats);
+            
+            // Setup UI controls
             this.setupExport();
-            
-            // Setup arrows toggle
             this.setupArrowsToggle();
-
-            // Setup animation controls
             this.setupAnimationControls();
             
         } catch (error) {
@@ -74,8 +88,32 @@ class DecisionTimeline {
             .style('max-width', '300px');
     }
     
+    getActorType(actorName) {
+        // Extract actor type from actor name (e.g., "Retailer_Alpha" -> "Retailer")
+        if (actorName.includes('Retailer')) return 'Retailer';
+        if (actorName.includes('Wholesaler')) return 'Wholesaler';
+        if (actorName.includes('Distributor')) return 'Distributor';
+        if (actorName.includes('Factory')) return 'Factory';
+        return 'Unknown';
+    }
+    
+    sortActorsBySupplyChain(actors) {
+        // Sort actors in supply chain order: Retailer (bottom) to Factory (top)
+        // But we want Factory at top, then Distributor, then Wholesaler, then Retailer at bottom
+        return actors.sort((a, b) => {
+            const typeA = this.getActorType(a);
+            const typeB = this.getActorType(b);
+            
+            // Use the actorOrder mapping for sorting
+            const orderA = this.actorOrder[typeA] || 99;
+            const orderB = this.actorOrder[typeB] || 99;
+            
+            return orderA - orderB; // Ascending order
+        });
+    }
+    
     showTooltip(event, d) {
-        const amplification = (d.orderQty / d.demandRate).toFixed(2);
+        const actorType = this.getActorType(d.actorName);
         const riskEmoji = {
             'low': '🟢',
             'medium': '🟡',
@@ -91,24 +129,55 @@ class DecisionTimeline {
             'unknown': '?'
         }[d.quality] || '';
         
-        // Find connected links
+        let decisionInfo = '';
+        if (d.decisionType === 'ActionDecision') {
+            const amplification = d.orderQty && d.demandRate 
+                ? (d.orderQty / d.demandRate).toFixed(2)
+                : 'N/A';
+            
+            decisionInfo = `
+                <div style="margin-bottom: 4px;">
+                    <span style="opacity: 0.8;">Order:</span> 
+                    <strong>${d.orderQty} units</strong>
+                </div>
+                <div style="margin-bottom: 4px;">
+                    <span style="opacity: 0.8;">Amplification:</span> 
+                    <strong>${amplification}x</strong>
+                </div>
+            `;
+        } else {
+            decisionInfo = `
+                <div style="margin-bottom: 4px;">
+                    <span style="opacity: 0.8;">Decision:</span> 
+                    <strong>No Action (No order placed)</strong>
+                </div>
+                <div style="margin-bottom: 4px;">
+                    <span style="opacity: 0.8;">Rationale:</span> 
+                    <em style="font-size: 12px;">Sufficient inventory or low demand</em>
+                </div>
+            `;
+        }
+        
+        // Find connected links for this decision
         const outgoingLink = this.links.find(link => link.source === d);
         const incomingLink = this.links.find(link => link.target === d);
         
         let connectionInfo = '';
         if (outgoingLink) {
+            const targetType = this.getActorType(outgoingLink.target.actorName);
             connectionInfo += `
                 <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 12px;">
-                    <div style="opacity: 0.8;">➤ This order arrives at:</div>
-                    <strong>${outgoingLink.target.actorName} (Week ${outgoingLink.target.week})</strong>
+                    <div style="opacity: 0.8;">⬆️ Order flows upstream to:</div>
+                    <strong>${targetType}: ${outgoingLink.target.actorName} (Week ${outgoingLink.target.week})</strong>
                 </div>
             `;
         }
         if (incomingLink) {
+            const sourceType = this.getActorType(incomingLink.source.actorName);
             connectionInfo += `
                 <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.2); font-size: 12px;">
-                    <div style="opacity: 0.8;">◀ Incoming order from:</div>
-                    <strong>${incomingLink.source.actorName} (Week ${incomingLink.source.week})</strong>
+                    <div style="opacity: 0.8;">⬇️ Incoming order from:</div>
+                    <strong>${sourceType}: ${incomingLink.source.actorName} (Week ${incomingLink.source.week})</strong>
                     <div style="opacity: 0.8; font-size: 11px;">${incomingLink.quantity} units</div>
                 </div>
             `;
@@ -116,20 +185,16 @@ class DecisionTimeline {
         
         const html = `
             <div style="font-weight: 600; margin-bottom: 8px; font-size: 14px;">
-                Week ${d.week} - ${d.actorName}
+                Week ${d.week} - ${actorType}: ${d.actorName}
+                <span style="font-size: 11px; opacity: 0.7; margin-left: 8px;">
+                    (${d.decisionType})
+                </span>
             </div>
             <div style="border-top: 1px solid rgba(255,255,255,0.2); padding-top: 8px;">
-                <div style="margin-bottom: 4px;">
-                    <span style="opacity: 0.8;">Order:</span> 
-                    <strong>${d.orderQty} units</strong>
-                </div>
+                ${decisionInfo}
                 <div style="margin-bottom: 4px;">
                     <span style="opacity: 0.8;">Risk:</span> 
                     <strong>${riskEmoji} ${d.risk.toUpperCase()}</strong>
-                </div>
-                <div style="margin-bottom: 4px;">
-                    <span style="opacity: 0.8;">Amplification:</span> 
-                    <strong>${amplification}x</strong>
                 </div>
                 ${d.quality ? `
                 <div style="margin-bottom: 4px;">
@@ -199,8 +264,8 @@ class DecisionTimeline {
             .attr('stroke-opacity', 0.9)
             .attr('stroke-width', link => {
                 const strokeScale = d3.scaleLinear()
-                    .domain([0, d3.max(this.data, d => d.orderQty)])
-                    .range([2, 10]); // Más gruesas al highlight
+                    .domain([0, d3.max(this.data, d => d.orderQty || 0)])
+                    .range([2, 10]);
                 return strokeScale(link.quantity);
             });
         
@@ -229,7 +294,7 @@ class DecisionTimeline {
             .attr('stroke-opacity', 0.4)
             .attr('stroke-width', link => {
                 const strokeScale = d3.scaleLinear()
-                    .domain([0, d3.max(this.data, d => d.orderQty)])
+                    .domain([0, d3.max(this.data, d => d.orderQty || 0)])
                     .range([1, 8]);
                 return strokeScale(link.quantity);
             });
@@ -264,139 +329,24 @@ class DecisionTimeline {
         arrows.style('display', this.showArrows ? 'block' : 'none');
     }
     
-    async exportToPNG() {
-        const exportBtn = document.getElementById('export-btn');
-        exportBtn.disabled = true;
-        exportBtn.textContent = '⏳ Exporting...';
-        
-        try {
-            const svgElement = this.svg.node();
-            const bbox = svgElement.getBBox();
-            
-            const canvas = document.createElement('canvas');
-            const scale = 2;
-            canvas.width = (bbox.width + CONFIG.visualization.margin.left + CONFIG.visualization.margin.right) * scale;
-            canvas.height = (bbox.height + CONFIG.visualization.margin.top + CONFIG.visualization.margin.bottom) * scale;
-            
-            const ctx = canvas.getContext('2d');
-            ctx.scale(scale, scale);
-            
-            ctx.fillStyle = 'white';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            const svgData = new XMLSerializer().serializeToString(svgElement);
-            const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-            const svgUrl = URL.createObjectURL(svgBlob);
-            
-            const img = new Image();
-            img.onload = () => {
-                ctx.drawImage(img, 0, 0);
-                URL.revokeObjectURL(svgUrl);
-                
-                canvas.toBlob((blob) => {
-                    const url = URL.createObjectURL(blob);
-                    const link = document.createElement('a');
-                    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-                    link.download = `beer-game-timeline-${timestamp}.png`;
-                    link.href = url;
-                    link.click();
-                    URL.revokeObjectURL(url);
-                    
-                    this.showNotification('✓ Timeline exported successfully!');
-                    
-                    exportBtn.disabled = false;
-                    exportBtn.textContent = '📥 Export PNG';
-                });
-            };
-            
-            img.onerror = () => {
-                throw new Error('Failed to load SVG image');
-            };
-            
-            img.src = svgUrl;
-            
-        } catch (error) {
-            console.error('Export failed:', error);
-            this.showNotification('✗ Export failed: ' + error.message, true);
-            exportBtn.disabled = false;
-            exportBtn.textContent = '📥 Export PNG';
-        }
-    }
-    
-    showNotification(message, isError = false) {
-        const notification = document.createElement('div');
-        notification.className = 'export-notification';
-        notification.textContent = message;
-        if (isError) {
-            notification.style.background = '#F44336';
-        }
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-            notification.classList.add('fade-out');
-            setTimeout(() => notification.remove(), 300);
-        }, 2500);
-    }
-    
-    showLoading() {
-        this.container.html('<div class="loading">Loading decision contexts</div>');
-    }
-    
-    showError(message) {
-        this.container.html(`<div class="error">${message}</div>`);
-    }
-    
-    computePropagationLinks() {
-        // Mapeo usando URIs reales
-        const actorHierarchy = {
-            'http://beergame.org/retailer#Retailer_Alpha': 'http://beergame.org/wholesaler#Wholesaler_Beta',
-            'http://beergame.org/wholesaler#Wholesaler_Beta': 'http://beergame.org/distributor#Distributor_Gamma',
-            'http://beergame.org/distributor#Distributor_Gamma': 'http://beergame.org/factory#Factory_Delta'
-        };
-        
-        const links = [];
-        
-        this.data.forEach(decision => {
-            const upstreamActor = actorHierarchy[decision.actor];
-            if (!upstreamActor) return;
-            
-            const arrivalWeek = decision.week + 2;
-            
-            const upstreamDecision = this.data.find(d => 
-                d.actor === upstreamActor && d.week === arrivalWeek
-            );
-            
-            if (upstreamDecision) {
-                links.push({
-                    source: decision,
-                    target: upstreamDecision,
-                    quantity: decision.orderQty,
-                    amplification: decision.orderQty / decision.demandRate
-                });
-            }
-        });
-        
-        return links;
-    }
-    
     setupAnimationControls() {
-    const playBtn = document.getElementById('play-btn');
-    const resetBtn = document.getElementById('reset-btn');
-    const speedSelect = document.getElementById('speed-select');
-    
-    if (!playBtn || !resetBtn || !speedSelect) return;
-    
-    playBtn.addEventListener('click', () => this.togglePlayPause());
-    resetBtn.addEventListener('click', () => this.resetAnimation());
-    speedSelect.addEventListener('change', (e) => {
-        this.animationSpeed = 1000 / parseFloat(e.target.value);
-        if (this.isPlaying) {
-            this.stopAnimation();
-            this.startAnimation();
+        const playBtn = document.getElementById('play-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const speedSelect = document.getElementById('speed-select');
+        
+        if (!playBtn || !resetBtn || !speedSelect) return;
+        
+        playBtn.addEventListener('click', () => this.togglePlayPause());
+        resetBtn.addEventListener('click', () => this.resetAnimation());
+        speedSelect.addEventListener('change', (e) => {
+            this.animationSpeed = 1000 / parseFloat(e.target.value);
+            if (this.isPlaying) {
+                this.stopAnimation();
+                this.startAnimation();
             }
         });
     }
-
+    
     togglePlayPause() {
         if (this.isPlaying) {
             this.pauseAnimation();
@@ -404,7 +354,7 @@ class DecisionTimeline {
             this.playAnimation();
         }
     }
-
+    
     playAnimation() {
         const playBtn = document.getElementById('play-btn');
         playBtn.textContent = '⏸️ Pause';
@@ -413,7 +363,7 @@ class DecisionTimeline {
         this.isPlaying = true;
         this.startAnimation();
     }
-
+    
     pauseAnimation() {
         const playBtn = document.getElementById('play-btn');
         playBtn.textContent = '▶️ Play';
@@ -422,7 +372,7 @@ class DecisionTimeline {
         this.isPlaying = false;
         this.stopAnimation();
     }
-
+    
     resetAnimation() {
         this.stopAnimation();
         this.currentWeek = 0;
@@ -439,7 +389,7 @@ class DecisionTimeline {
         
         document.getElementById('current-week').textContent = 'Week -';
     }
-
+    
     startAnimation() {
         const weeks = [...new Set(this.data.map(d => d.week))].sort((a, b) => a - b);
         
@@ -462,14 +412,14 @@ class DecisionTimeline {
             }
         }, this.animationSpeed);
     }
-
+    
     stopAnimation() {
         if (this.animationTimer) {
             clearInterval(this.animationTimer);
             this.animationTimer = null;
         }
     }
-
+    
     showWeek(week) {
         document.getElementById('current-week').textContent = `Week ${week}`;
         
@@ -517,6 +467,39 @@ class DecisionTimeline {
         });
     }
     
+    computePropagationLinks() {
+        // Use connection data fetched from SPARQL
+        if (!this.connectionsData || this.connectionsData.length === 0) {
+            return [];
+        }
+        
+        const links = [];
+        
+        this.connectionsData.forEach(conn => {
+            const sourceDecision = this.data.find(d => 
+                d.actor === conn.sourceActor && d.week === conn.sourceWeek
+            );
+            
+            const targetDecision = this.data.find(d => 
+                d.actor === conn.targetActor && d.week === conn.targetWeek
+            );
+            
+            if (sourceDecision && targetDecision) {
+                const amplification = conn.orderQty / (conn.demandRate || 1);
+                
+                links.push({
+                    source: sourceDecision,
+                    target: targetDecision,
+                    quantity: conn.orderQty,
+                    demandRate: conn.demandRate,
+                    amplification: amplification
+                });
+            }
+        });
+        
+        return links;
+    }
+    
     render() {
         // Clear container
         this.container.html('');
@@ -535,9 +518,12 @@ class DecisionTimeline {
         const g = this.svg.append('g')
             .attr('transform', `translate(${margin.left},${margin.top})`);
         
-        // Get unique weeks and actors
+        // Get unique weeks
         const weeks = [...new Set(this.data.map(d => d.week))].sort((a, b) => a - b);
-        const actors = [...new Set(this.data.map(d => d.actorName))];
+        
+        // Get actors and sort by supply chain position
+        let actors = [...new Set(this.data.map(d => d.actorName))];
+        actors = this.sortActorsBySupplyChain(actors);
         
         // Scales
         const xScale = d3.scaleLinear()
@@ -550,12 +536,27 @@ class DecisionTimeline {
             .padding(0.3);
         
         const radiusScale = d3.scaleSqrt()
-            .domain([0, d3.max(this.data, d => d.orderQty / d.demandRate)])
+            .domain([0, d3.max(this.data, d => {
+                if (d.decisionType === 'ActionDecision' && d.orderQty && d.demandRate) {
+                    return d.orderQty / d.demandRate;
+                }
+                return 1;
+            })])
             .range([CONFIG.visualization.pointRadius.min, CONFIG.visualization.pointRadius.max]);
         
         const strokeScale = d3.scaleLinear()
-            .domain([0, d3.max(this.data, d => d.orderQty)])
+            .domain([0, d3.max(this.data, d => d.orderQty || 0)])
             .range([1, 8]);
+        
+        // Add supply chain flow indicator on Y-axis
+        g.append('text')
+            .attr('x', -10)
+            .attr('y', innerHeight / 2)
+            .attr('text-anchor', 'end')
+            .attr('transform', 'rotate(-90)')
+            .style('font-size', '12px')
+            .style('fill', '#666')
+            .text('Supply Chain Flow: Factory → Distributor → Wholesaler → Retailer');
         
         // Grid
         g.append('g')
@@ -580,20 +581,59 @@ class DecisionTimeline {
             .attr('transform', `translate(0,${innerHeight})`)
             .call(xAxis);
         
-        const yAxis = d3.axisLeft(yScale);
+        const yAxis = d3.axisLeft(yScale)
+            .tickFormat(d => {
+                // Display actor type and name for clarity
+                const actorType = this.getActorType(d);
+                return `${actorType}: ${d}`;
+            });
         
         g.append('g')
             .attr('class', 'axis y-axis')
             .call(yAxis);
         
-        // Compute propagation links
-        this.links = this.computePropagationLinks();
+        // Add supply chain flow arrows on Y-axis
+        actors.forEach((actor, index) => {
+            if (index < actors.length - 1) {
+                const currentActorType = this.getActorType(actor);
+                const nextActorType = this.getActorType(actors[index + 1]);
+                
+                // Add flow arrow between actors
+                g.append('line')
+                    .attr('class', 'supply-chain-flow')
+                    .attr('x1', -30)
+                    .attr('x2', -30)
+                    .attr('y1', yScale(actor) + yScale.bandwidth())
+                    .attr('y2', yScale(actors[index + 1]))
+                    .attr('stroke', '#999')
+                    .attr('stroke-width', 1)
+                    .attr('stroke-dasharray', '5,5')
+                    .attr('marker-end', 'url(#flowArrow)');
+                    
+                g.append('text')
+                    .attr('x', -35)
+                    .attr('y', (yScale(actor) + yScale(actors[index + 1]) + yScale.bandwidth()) / 2)
+                    .attr('text-anchor', 'end')
+                    .style('font-size', '10px')
+                    .style('fill', '#666')
+                    .style('font-style', 'italic')
+                    .text('supplies to');
+            }
+        });
         
-        // Draw arrows
-        const arrowsGroup = g.append('g').attr('class', 'arrows-layer');
-        
-        // Define arrow marker
+        // Define flow arrow marker
         const defs = this.svg.append('defs');
+        
+        defs.append('marker')
+            .attr('id', 'flowArrow')
+            .attr('markerWidth', 6)
+            .attr('markerHeight', 6)
+            .attr('refX', 0)
+            .attr('refY', 3)
+            .attr('orient', 'auto')
+            .append('polygon')
+            .attr('points', '0 0, 6 3, 0 6')
+            .attr('fill', '#666');
         
         defs.append('marker')
             .attr('id', 'arrowhead')
@@ -605,6 +645,12 @@ class DecisionTimeline {
             .append('polygon')
             .attr('points', '0 0, 6 2, 0 4')
             .attr('fill', '#666');
+        
+        // Compute propagation links
+        this.links = this.computePropagationLinks();
+        
+        // Draw arrows
+        const arrowsGroup = g.append('g').attr('class', 'arrows-layer');
         
         const arrows = arrowsGroup.selectAll('.propagation-arrow')
             .data(this.links)
@@ -631,11 +677,33 @@ class DecisionTimeline {
             .data(this.data)
             .enter()
             .append('circle')
-            .attr('class', 'decision-point')
+            .attr('class', d => `decision-point ${d.decisionType}`)
             .attr('cx', d => xScale(d.week))
             .attr('cy', d => yScale(d.actorName) + yScale.bandwidth() / 2)
-            .attr('r', d => radiusScale(d.orderQty / d.demandRate))
-            .attr('fill', d => CONFIG.colors.risk[d.risk] || '#999')
+            .attr('r', d => {
+                // For NoActionDecision, smaller radius
+                if (d.decisionType === 'NoActionDecision') {
+                    return CONFIG.visualization.pointRadius.min * 0.7;
+                }
+                // For ActionDecision, radius based on amplification
+                const amplification = d.orderQty / (d.demandRate || 1);
+                return radiusScale(amplification);
+            })
+            .attr('fill', d => {
+                // Different color for NoActionDecision
+                if (d.decisionType === 'NoActionDecision') {
+                    return '#AAAAAA'; // Gray for NoAction
+                }
+                return CONFIG.colors.risk[d.risk] || '#999';
+            })
+            .attr('stroke', d => {
+                // Different border for NoActionDecision
+                if (d.decisionType === 'NoActionDecision') {
+                    return '#888888';
+                }
+                return 'none';
+            })
+            .attr('stroke-width', 1)
             .attr('opacity', 0.8)
             .on('click', (event, d) => this.showContextDetail(d))
             .on('mouseenter', function(event, d) {
@@ -650,12 +718,13 @@ class DecisionTimeline {
             })
             .on('mouseleave', function() {
                 d3.select(this)
-                    .attr('stroke', 'none');
+                    .attr('stroke', d => d.decisionType === 'NoActionDecision' ? '#888888' : 'none')
+                    .attr('stroke-width', 1);
                 self.hideTooltip();
                 self.resetHighlight();
             });
         
-        // Quality indicators
+        // Quality indicators (only for decisions with quality assessment)
         g.selectAll('.quality-indicator')
             .data(this.data.filter(d => d.quality))
             .enter()
@@ -677,8 +746,27 @@ class DecisionTimeline {
         const legend = d3.select('.legend');
         legend.html('');
         
+        // Decision types
+        legend.append('div').style('font-weight', 'bold').text('Decision Types:');
+        
+        const actionLegend = legend.append('div').attr('class', 'legend-item');
+        actionLegend.append('div')
+            .attr('class', 'legend-color')
+            .style('background-color', '#2196F3')
+            .style('border', 'none');
+        actionLegend.append('span').text('Action Decision (order placed)');
+        
+        const noActionLegend = legend.append('div').attr('class', 'legend-item');
+        noActionLegend.append('div')
+            .attr('class', 'legend-color')
+            .style('background-color', '#AAAAAA')
+            .style('border', '1px solid #888');
+        noActionLegend.append('span').text('No-Action Decision (sufficient inventory)');
+        
+        legend.append('div').style('width', '100%');
+        
         // Risk levels
-        legend.append('div').style('font-weight', 'bold').text('Risk:');
+        legend.append('div').style('font-weight', 'bold').text('Risk Levels:');
         Object.entries(CONFIG.colors.risk).forEach(([risk, color]) => {
             const item = legend.append('div').attr('class', 'legend-item');
             item.append('div')
@@ -689,8 +777,8 @@ class DecisionTimeline {
         
         legend.append('div').style('width', '100%');
         
-        // Quality
-        legend.append('div').style('font-weight', 'bold').text('Outcome:');
+        // Quality outcomes
+        legend.append('div').style('font-weight', 'bold').text('Outcome Quality:');
         Object.entries(CONFIG.colors.quality).forEach(([quality, color]) => {
             const item = legend.append('div').attr('class', 'legend-item');
             item.append('div')
@@ -702,7 +790,7 @@ class DecisionTimeline {
         legend.append('div').style('width', '100%');
         
         // Arrows legend
-        legend.append('div').style('font-weight', 'bold').text('Propagation:');
+        legend.append('div').style('font-weight', 'bold').text('Order Propagation:');
         
         const arrowNormal = legend.append('div').attr('class', 'legend-item');
         arrowNormal.append('div')
@@ -732,28 +820,56 @@ class DecisionTimeline {
         const panel = d3.select('#detail-panel');
         panel.classed('hidden', false);
         
-        const amplification = (context.orderQty / context.demandRate).toFixed(2);
+        const actorType = this.getActorType(context.actorName);
+        const amplification = context.orderQty && context.demandRate 
+            ? (context.orderQty / context.demandRate).toFixed(2)
+            : 'N/A';
+        
+        let decisionSection = '';
+        if (context.decisionType === 'ActionDecision') {
+            decisionSection = `
+                <div class="context-section">
+                    <h3>Action Decision</h3>
+                    <div class="context-row">
+                        <span class="label">Order Quantity:</span>
+                        <span class="value">${context.orderQty} units</span>
+                    </div>
+                    <div class="context-row">
+                        <span class="label">Policy:</span>
+                        <span class="value">${context.policy}</span>
+                    </div>
+                    <div class="context-row">
+                        <span class="label">Amplification:</span>
+                        <span class="value">${amplification}x</span>
+                    </div>
+                </div>
+            `;
+        } else {
+            decisionSection = `
+                <div class="context-section">
+                    <h3>No-Action Decision</h3>
+                    <div class="context-row">
+                        <span class="label">No order placed</span>
+                        <span class="value">Sufficient inventory or low demand</span>
+                    </div>
+                    <div class="context-row">
+                        <span class="label">Policy:</span>
+                        <span class="value">Passive / Conservative</span>
+                    </div>
+                    <div class="context-row">
+                        <span class="label">Amplification:</span>
+                        <span class="value">N/A (no order)</span>
+                    </div>
+                </div>
+            `;
+        }
         
         panel.html(`
             <div class="context-card">
-                <h2>Week ${context.week} - ${context.actorName} Decision</h2>
+                <h2>Week ${context.week} - ${actorType}: ${context.actorName}</h2>
                 
                 <div class="context-grid">
-                    <div class="context-section">
-                        <h3>Decision</h3>
-                        <div class="context-row">
-                            <span class="label">Order Quantity:</span>
-                            <span class="value">${context.orderQty} units</span>
-                        </div>
-                        <div class="context-row">
-                            <span class="label">Policy:</span>
-                            <span class="value">${context.policy}</span>
-                        </div>
-                        <div class="context-row">
-                            <span class="label">Amplification:</span>
-                            <span class="value">${amplification}x</span>
-                        </div>
-                    </div>
+                    ${decisionSection}
                     
                     <div class="context-section">
                         <h3>State</h3>
@@ -816,23 +932,32 @@ class DecisionTimeline {
         `);
     }
     
-    async updateStats() {
-        const stats = await fetchActorStats();
+    async updateStats(statsData) {
+        const stats = statsData || await fetchActorStats();
         
-        const totalDecisions = stats.reduce((sum, s) => sum + s.decisions, 0);
+        const totalDecisions = stats.reduce((sum, s) => sum + s.totalDecisions, 0);
+        const totalActionDecisions = stats.reduce((sum, s) => sum + s.actionDecisions, 0);
+        const totalNoActionDecisions = stats.reduce((sum, s) => sum + s.noActionDecisions, 0);
         const totalBullwhip = stats.reduce((sum, s) => sum + s.bullwhipCount, 0);
-        const avgAmplification = (stats.reduce((sum, s) => sum + s.avgAmplification * s.decisions, 0) / totalDecisions).toFixed(2);
+        
+        const avgAmplification = stats.reduce((sum, s) => {
+            const actorWeight = s.actionDecisions;
+            return sum + (s.avgAmplification || 0) * actorWeight;
+        }, 0) / totalActionDecisions || 0;
         
         const statsHtml = `
             <div class="stat-card">
                 <h3>Total Decisions</h3>
                 <div class="value">${totalDecisions}</div>
-                <div class="label">Across all actors</div>
+                <div class="label">
+                    Action: ${totalActionDecisions} | 
+                    No Action: ${totalNoActionDecisions}
+                </div>
             </div>
             <div class="stat-card">
                 <h3>Avg Amplification</h3>
-                <div class="value">${avgAmplification}x</div>
-                <div class="label">Order / Demand ratio</div>
+                <div class="value">${avgAmplification.toFixed(2)}x</div>
+                <div class="label">Only Action decisions</div>
             </div>
             <div class="stat-card">
                 <h3>Bullwhip Events</h3>
@@ -842,11 +967,93 @@ class DecisionTimeline {
             <div class="stat-card">
                 <h3>Weeks Simulated</h3>
                 <div class="value">${[...new Set(this.data.map(d => d.week))].length}</div>
-                <div class="label">With decisions</div>
+                <div class="label">With complete timeline</div>
             </div>
         `;
         
         d3.select('.stats-grid').html(statsHtml);
+    }
+    
+    async exportToPNG() {
+        const exportBtn = document.getElementById('export-btn');
+        exportBtn.disabled = true;
+        exportBtn.textContent = '⏳ Exporting...';
+        
+        try {
+            const svgElement = this.svg.node();
+            const bbox = svgElement.getBBox();
+            
+            const canvas = document.createElement('canvas');
+            const scale = 2;
+            canvas.width = (bbox.width + CONFIG.visualization.margin.left + CONFIG.visualization.margin.right) * scale;
+            canvas.height = (bbox.height + CONFIG.visualization.margin.top + CONFIG.visualization.margin.bottom) * scale;
+            
+            const ctx = canvas.getContext('2d');
+            ctx.scale(scale, scale);
+            
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const svgData = new XMLSerializer().serializeToString(svgElement);
+            const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+            const svgUrl = URL.createObjectURL(svgBlob);
+            
+            const img = new Image();
+            img.onload = () => {
+                ctx.drawImage(img, 0, 0);
+                URL.revokeObjectURL(svgUrl);
+                
+                canvas.toBlob((blob) => {
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
+                    link.download = `beer-game-timeline-${timestamp}.png`;
+                    link.href = url;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                    
+                    this.showNotification('✓ Timeline exported successfully!');
+                    
+                    exportBtn.disabled = false;
+                    exportBtn.textContent = '📥 Export PNG';
+                });
+            };
+            
+            img.onerror = () => {
+                throw new Error('Failed to load SVG image');
+            };
+            
+            img.src = svgUrl;
+            
+        } catch (error) {
+            console.error('Export failed:', error);
+            this.showNotification('✗ Export failed: ' + error.message, true);
+            exportBtn.disabled = false;
+            exportBtn.textContent = '📥 Export PNG';
+    }
+    }
+    
+    showNotification(message, isError = false) {
+        const notification = document.createElement('div');
+        notification.className = 'export-notification';
+        notification.textContent = message;
+        if (isError) {
+            notification.style.background = '#F44336';
+        }
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+            notification.classList.add('fade-out');
+            setTimeout(() => notification.remove(), 300);
+        }, 2500);
+    }
+    
+    showLoading() {
+        this.container.html('<div class="loading">Loading decision contexts...</div>');
+    }
+    
+    showError(message) {
+        this.container.html(`<div class="error">${message}</div>`);
     }
 }
 
