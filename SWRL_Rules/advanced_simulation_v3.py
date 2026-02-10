@@ -934,6 +934,8 @@ def analyze_decision_outcomes(session, total_weeks, supply_chain, base_url):
                                 amplification = order_qty / demand_rate
                                 caused_bullwhip = amplification > 1.5
                             
+                            caused_stockout = False
+                            
                             # Determinar resultado
                             actual_outcome = "No data available"
                             quality = "unknown"
@@ -985,7 +987,7 @@ def analyze_decision_outcomes(session, total_weeks, supply_chain, base_url):
                                     <{context_uri}> bg:actualOutcome "{actual_outcome.replace('"', '\\"')}" ;
                                                     bg:outcomeQuality "{quality}" ;
                                                     bg:causedBullwhip {str(caused_bullwhip).lower()} ;
-                                                    bg:causedStockout "false" .
+                                                    bg:causedStockout {str(caused_stockout).lower()} .
                                 }}
                                 WHERE {{
                                     OPTIONAL {{ <{context_uri}> bg:actualOutcome ?oldOutcome }}

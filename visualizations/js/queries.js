@@ -127,27 +127,23 @@ async function fetchDecisionConnections() {
         PREFIX bg: <http://beergame.org/ontology#>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         
-        SELECT ?sourceActor ?sourceWeek ?targetActor ?targetWeek ?orderQty ?demandRate
+        SELECT DISTINCT ?sourceActor ?sourceWeek ?targetActor ?targetWeek ?orderQty
         WHERE {
-            # Encontrar órdenes que han sido creadas
-            ?order a bg:Order ;
+            ?sourceDecision a bg:Decision ;
+                           bg:madeBy ?sourceActor ;
+                           bg:forWeek ?sourceWeekIRI .
+            
+            ?sourceWeekIRI bg:weekNumber ?sourceWeek .
+            
+            ?sourceDecision bg:hasDecisionContext ?context .
+            ?order bg:basedOnContext ?context ;
                    bg:placedBy ?sourceActor ;
                    bg:receivedBy ?targetActor ;
-                   bg:forWeek ?weekIRI ;
                    bg:orderQuantity ?orderQty .
             
-            ?weekIRI bg:weekNumber ?sourceWeek .
-            
-            # Obtener métricas de la fuente para calcular amplificación
-            ?sourceActor bg:hasMetrics ?sourceMetrics .
-            ?sourceMetrics bg:forWeek ?weekIRI ;
-                          bg:demandRate ?demandRate .
-            
-            # Calcular semana de llegada (asumiendo 2 semanas de delay)
             ?targetActor bg:shippingDelay ?shippingDelay .
             BIND(?sourceWeek + ?shippingDelay AS ?targetWeek)
             
-            # Solo incluir si el target tiene una decisión en esa semana
             FILTER EXISTS {
                 ?targetDecision a bg:Decision ;
                                bg:madeBy ?targetActor ;
@@ -155,31 +151,51 @@ async function fetchDecisionConnections() {
                 
                 ?targetWeekIRI bg:weekNumber ?targetWeek .
             }
+            
+            FILTER(?sourceWeek >= 2)
         }
         ORDER BY ?sourceWeek ?sourceActor
     `;
     
-    return executeSparqlQuery(query);
+    // return executeSparqlQuery(query);
+    const result = await executeSparqlQuery(query);
+
+    // Filter out connections where sourceWeek < 2 (no decisions exist)
+    const filtered = result.filter(conn => conn.sourceWeek >= 2);
+
+    // Deduplicar 
+    const seen = new Set();
+    const deduplicated = result.filter(conn => {
+        const key = `${conn.sourceActor}-${conn.sourceWeek}-${conn.targetActor}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+
+    console.log('fetchDecisionConnections result:', deduplicated);
+    return deduplicated;
 }
 
 async function fetchActorHierarchy() {
     /**
-     * Obtain the supply chain hierarchy to display in the dashboard (who supplies to whom)
+     * Infer supply chain hierarchy from actual orders
+     * (bg:suppliesTo property doesn't exist in data)
      */
     const query = `
         PREFIX bg: <http://beergame.org/ontology#>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         
-        SELECT ?actor ?actorName ?upstreamActor ?upstreamName
+        SELECT DISTINCT ?actor ?actorName ?upstreamActor ?upstreamName
         WHERE {
-            # Obtener relaciones de suministro
-            ?actor bg:suppliesTo ?upstreamActor .
+            # Find orders to infer hierarchy
+            ?order a bg:Order ;
+                   bg:placedBy ?actor ;
+                   bg:receivedBy ?upstreamActor .
             
-            # Obtener nombres
+            # Get actor names
             ?actor rdfs:label ?actorName .
             ?upstreamActor rdfs:label ?upstreamName .
         }
-        ORDER BY ?actorName
     `;
     
     return executeSparqlQuery(query);
@@ -196,6 +212,12 @@ async function fetchAllData() {
             fetchDecisionConnections(),
             fetchActorHierarchy()
         ]);
+
+        console.log('All data loaded:', { // ← AÑADIR
+            contexts: contexts.length,
+            connections: connections.length,
+            hierarchy: hierarchy.length
+        });
         
         return {
             contexts,

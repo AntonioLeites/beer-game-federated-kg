@@ -474,8 +474,27 @@ class DecisionTimeline {
         }
         
         const links = [];
+
+        console.log('=== DEBUG CONNECTIONS ===');
+        console.log('Total connections:', this.connectionsData.length);
+        console.log('Total decisions:', this.data.length);
+        console.log('Sample connection:', this.connectionsData[0]);
+        console.log('Sample decision:', this.data[0]);
         
         this.connectionsData.forEach(conn => {
+            console.log('Looking for connection:', {
+                sourceActor: conn.sourceActor,
+                sourceWeek: conn.sourceWeek,
+                targetActor: conn.targetActor,
+                targetWeek: conn.targetWeek
+            });
+
+            console.log('Available decisions:', this.data.map(d => ({
+                actor: d.actor,
+                week: d.week
+            })));
+
+
             const sourceDecision = this.data.find(d => 
                 d.actor === conn.sourceActor && d.week === conn.sourceWeek
             );
@@ -484,6 +503,14 @@ class DecisionTimeline {
                 d.actor === conn.targetActor && d.week === conn.targetWeek
             );
             
+            if (!sourceDecision) {
+                console.log('❌ Source not found:', conn.sourceActor, 'week', conn.sourceWeek);
+            }
+            if (!targetDecision) {
+                console.log('❌ Target not found:', conn.targetActor, 'week', conn.targetWeek);
+            }
+
+
             if (sourceDecision && targetDecision) {
                 const amplification = conn.orderQty / (conn.demandRate || 1);
                 
@@ -497,6 +524,10 @@ class DecisionTimeline {
             }
         });
         
+        console.log('Links created:', links.length);
+        console.log('=== END DEBUG ===');
+
+
         return links;
     }
     
