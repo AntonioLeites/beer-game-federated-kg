@@ -15,18 +15,37 @@
     <div class="container">
         <!-- Header -->
         <header>
-            <h1>🍺 Beer Game - Decision Timeline Explorer</h1>
-            <p>Interactive visualization of supply chain decision contexts with V3.1 Context Knowledge Graph</p>
-            <button id="export-btn" class="export-button" title="Export timeline as PNG">
-                📥 Export PNG
-            </button>
-            <button id="arrows-toggle" class="toggle-button" title="Show/hide propagation arrows">
-                🔗 Hide Arrows
-            </button>
+            <div class="header-content">
+                <div class="title-section">
+                    <h1>🍺 Beer Game - Decision Timeline Explorer</h1>
+                    <p>Interactive visualization of supply chain decision contexts with V3.3 Context Knowledge Graph</p>
+                </div>
+
+                <!-- Botones originales -->
+                <button id="arrows-toggle" class="header-btn">🔗 Hide Arrows</button>
+                <button id="export-btn" class="header-btn">📊 Export PNG</button>
+
+                <!-- AÑADIR AQUÍ los controles de animación -->
+                <div class="animation-controls-header">
+                    <button id="play-btn" class="control-btn">▶️ Play</button>
+                    <button id="reset-btn" class="control-btn">⏮️ Reset</button>
+                    <div class="speed-control">
+                        <label>Speed:</label>
+                        <select id="speed-select">
+                            <option value="0.5">0.5x</option>
+                            <option value="1" selected>1x</option>
+                            <option value="2">2x</option>
+                            <option value="4">4x</option>
+                        </select>
+                    </div>
+                    <span id="current-week" class="week-indicator">Week -</span>
+                </div>
+            </div>
         </header>
         
         <!-- Stats Dashboard -->
         <div class="controls">
+            <!-- Top row: Stats cards -->
             <div class="stats-grid">
                 <!-- Stats will be populated by JavaScript -->
                 <div class="stat-card">
@@ -34,34 +53,11 @@
                     <div class="value">-</div>
                 </div>
             </div>
-            
-            <!-- Animation Controls -->
-            <div class="animation-controls">
-                <button id="play-btn" class="control-btn" title="Play animation">
-                    ▶️ Play
-                </button>
-                <button id="reset-btn" class="control-btn" title="Reset to beginning">
-                    ⏮️ Reset
-                </button>
-                <div class="speed-control">
-                    <label>Speed:</label>
-                    <select id="speed-select">
-                        <option value="0.5">0.5x</option>
-                        <option value="1" selected>1x</option>
-                        <option value="2">2x</option>
-                        <option value="4">4x</option>
-                    </select>
-                </div>
-                <div class="progress-info">
-                    <span id="current-week">Week -</span>
-                </div>
-            </div>
-            
-            <!-- Legend -->
+        
+            <!-- Bottom row: Compact legend -->
             <div class="legend">
                 <!-- Legend will be populated by JavaScript -->
             </div>
-        </div>
         
         <!-- Timeline Visualization -->
         <div id="timeline-container">

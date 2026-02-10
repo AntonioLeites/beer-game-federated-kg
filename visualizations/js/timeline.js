@@ -581,11 +581,11 @@ class DecisionTimeline {
         
         // Add supply chain flow indicator on Y-axis
         g.append('text')
-            .attr('x', -10)
-            .attr('y', innerHeight / 2)
-            .attr('text-anchor', 'end')
-            .attr('transform', 'rotate(-90)')
-            .style('font-size', '12px')
+            .attr('x', +90)
+            .attr('y', innerHeight - 510)
+            .attr('text-anchor', 'middle')
+            .style('font-size', '14px')
+            .style('font-weight', '500')
             .style('fill', '#666')
             .text('Supply Chain Flow: Factory → Distributor → Wholesaler → Retailer');
         
@@ -774,76 +774,75 @@ class DecisionTimeline {
     }
     
     renderLegend() {
-        const legend = d3.select('.legend');
-        legend.html('');
-        
-        // Decision types
-        legend.append('div').style('font-weight', 'bold').text('Decision Types:');
-        
-        const actionLegend = legend.append('div').attr('class', 'legend-item');
-        actionLegend.append('div')
+    const legend = d3.select('.legend');
+    legend.html('');
+    
+    // Single row with 4 sections
+    
+    // Section 1: Decision Types
+    const decisionSection = legend.append('div').attr('class', 'legend-section');
+    decisionSection.append('div').attr('class', 'legend-title').text('Decision Types:');
+    
+    const actionItem = decisionSection.append('div').attr('class', 'legend-item');
+    actionItem.append('div')
+        .attr('class', 'legend-color')
+        .style('background-color', '#2196F3');
+    actionItem.append('span').text('Action');
+    
+    const noActionItem = decisionSection.append('div').attr('class', 'legend-item');
+    noActionItem.append('div')
+        .attr('class', 'legend-color')
+        .style('background-color', '#AAAAAA')
+        .style('border', '1px solid #888');
+    noActionItem.append('span').text('No-Action');
+    
+    // Section 2: Risk Levels
+    const riskSection = legend.append('div').attr('class', 'legend-section');
+    riskSection.append('div').attr('class', 'legend-title').text('Risk:');
+    Object.entries(CONFIG.colors.risk).forEach(([risk, color]) => {
+        const item = riskSection.append('div').attr('class', 'legend-item');
+        item.append('div')
             .attr('class', 'legend-color')
-            .style('background-color', '#2196F3')
-            .style('border', 'none');
-        actionLegend.append('span').text('Action Decision (order placed)');
-        
-        const noActionLegend = legend.append('div').attr('class', 'legend-item');
-        noActionLegend.append('div')
+            .style('background-color', color);
+        item.append('span').text(risk);
+    });
+    
+    // Section 3: Outcome Quality
+    const qualitySection = legend.append('div').attr('class', 'legend-section');
+    qualitySection.append('div').attr('class', 'legend-title').text('Outcome:');
+    Object.entries(CONFIG.colors.quality).forEach(([quality, color]) => {
+        const item = qualitySection.append('div').attr('class', 'legend-item');
+        item.append('div')
             .attr('class', 'legend-color')
-            .style('background-color', '#AAAAAA')
-            .style('border', '1px solid #888');
-        noActionLegend.append('span').text('No-Action Decision (sufficient inventory)');
-        
-        legend.append('div').style('width', '100%');
-        
-        // Risk levels
-        legend.append('div').style('font-weight', 'bold').text('Risk Levels:');
-        Object.entries(CONFIG.colors.risk).forEach(([risk, color]) => {
-            const item = legend.append('div').attr('class', 'legend-item');
-            item.append('div')
-                .attr('class', 'legend-color')
-                .style('background-color', color);
-            item.append('span').text(risk);
-        });
-        
-        legend.append('div').style('width', '100%');
-        
-        // Quality outcomes
-        legend.append('div').style('font-weight', 'bold').text('Outcome Quality:');
-        Object.entries(CONFIG.colors.quality).forEach(([quality, color]) => {
-            const item = legend.append('div').attr('class', 'legend-item');
-            item.append('div')
-                .attr('class', 'legend-color')
-                .style('background-color', color);
-            item.append('span').text(quality);
-        });
-        
-        legend.append('div').style('width', '100%');
-        
-        // Arrows legend
-        legend.append('div').style('font-weight', 'bold').text('Order Propagation:');
-        
-        const arrowNormal = legend.append('div').attr('class', 'legend-item');
-        arrowNormal.append('div')
-            .style('width', '20px')
-            .style('height', '3px')
-            .style('background-color', '#9E9E9E');
-        arrowNormal.append('span').text('normal flow');
-        
-        const arrowBullwhip = legend.append('div').attr('class', 'legend-item');
-        arrowBullwhip.append('div')
-            .style('width', '20px')
-            .style('height', '4px')
-            .style('background-color', '#FF9800');
-        arrowBullwhip.append('span').text('bullwhip (1.5-2x)');
-        
-        const arrowHigh = legend.append('div').attr('class', 'legend-item');
-        arrowHigh.append('div')
-            .style('width', '20px')
-            .style('height', '5px')
-            .style('background-color', '#F44336');
-        arrowHigh.append('span').text('high amplification (>2x)');
-    }
+            .style('background-color', color);
+        item.append('span').text(quality);
+    });
+    
+    // Section 4: Order Propagation
+    const propagationSection = legend.append('div').attr('class', 'legend-section');
+    propagationSection.append('div').attr('class', 'legend-title').text('Propagation:');
+    
+    const arrowNormal = propagationSection.append('div').attr('class', 'legend-item');
+    arrowNormal.append('div')
+        .style('width', '18px')
+        .style('height', '2px')
+        .style('background-color', '#9E9E9E');
+    arrowNormal.append('span').text('normal');
+    
+    const arrowBullwhip = propagationSection.append('div').attr('class', 'legend-item');
+    arrowBullwhip.append('div')
+        .style('width', '18px')
+        .style('height', '3px')
+        .style('background-color', '#FF9800');
+    arrowBullwhip.append('span').text('bullwhip');
+    
+    const arrowHigh = propagationSection.append('div').attr('class', 'legend-item');
+    arrowHigh.append('div')
+        .style('width', '18px')
+        .style('height', '4px')
+        .style('background-color', '#F44336');
+    arrowHigh.append('span').text('high');
+}
     
     showContextDetail(context) {
         this.selectedContext = context;

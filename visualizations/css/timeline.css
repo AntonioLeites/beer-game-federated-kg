@@ -682,3 +682,102 @@ header p {
     color: #333;
     margin-left: auto;
 }
+
+/* Animation Controls in Header */
+.animation-controls-header {
+    position: absolute;
+    top: 70px;
+    /* Below Hide Arrows/Export buttons */
+    right: 30px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 8px 15px;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+}
+
+.animation-controls-header .control-btn {
+    background: #5b9bd5;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.animation-controls-header .control-btn:hover {
+    background: #4a8bc2;
+    transform: translateY(-1px);
+}
+
+.animation-controls-header .speed-control {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+}
+
+.animation-controls-header .speed-control label {
+    color: #666;
+    margin: 0;
+}
+
+.animation-controls-header .speed-control select {
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.animation-controls-header .week-indicator {
+    font-size: 12px;
+    color: #666;
+    font-weight: 500;
+    padding-left: 10px;
+    border-left: 1px solid #ddd;
+}
+
+/* Legend - Single row, 4 sections */
+.legend {
+    display: flex;
+    gap: 25px;
+    margin-top: 12px;
+    padding: 10px 15px;
+    background: #fafafa;
+    border-radius: 6px;
+    flex-wrap: wrap;
+}
+
+.legend-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.legend-title {
+    font-weight: 600;
+    font-size: 10px;
+    color: #666;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    color: #333;
+}
+
+.legend-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
